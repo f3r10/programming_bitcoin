@@ -21,6 +21,10 @@ impl PartialEq for FiniteField{
     fn eq(&self, other: &Self) -> bool {
         self.num == other.num && self.prime == other.prime
     }
+
+    fn ne(&self, other: &Self) -> bool {
+        !(self == other)
+    }
 }
 impl fmt::Display for FiniteField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -32,4 +36,5 @@ fn main() {
     let b = FiniteField::new(6, 13);
     println!("{}", a == b);
     println!("{}", a == a);
+    println!("{}", a != b);
 }

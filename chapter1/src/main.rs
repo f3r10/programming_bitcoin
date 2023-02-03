@@ -34,7 +34,13 @@ impl fmt::Display for FiniteField {
 fn main() {
     let a = FiniteField::new(7, 13);
     let b = FiniteField::new(6, 13);
+
     println!("{}", a == b);
     println!("{}", a == a);
     println!("{}", a != b);
+    println!("------Exercise 2----------");
+    println!("{}", (44 + 33)%57);
+    println!("{}", (((9 - 29) % 57) + 57) % 57);
+    println!("{}", (17 + 42)%57);
+    println!("{}", (((52 - 30 - 38) % 57) + 57 )%57);
 }

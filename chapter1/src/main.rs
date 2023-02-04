@@ -1,4 +1,4 @@
-use std::{fmt, ops::{Add, Sub, Rem, Mul}};
+use std::{fmt, ops::{Add, Sub, Rem, Mul, Div}};
 
 use num_bigint::{ToBigInt, BigInt};
 
@@ -77,6 +77,19 @@ impl Mul for FiniteField{
     }
 }
 
+impl Div for FiniteField {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self::Output {
+        if self.prime != other.prime {
+            panic!("Cannot multiply two numbers is different Fields");
+        }
+        let exp = self.prime.clone() - 2.to_bigint().unwrap(); 
+        let num = (self.num * other.num.pow(exp.try_into().unwrap())).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        FiniteField {num, prime: self.prime}
+    }
+}
+
 fn main() {
     let a = FiniteField::new(7.to_bigint().unwrap(), 13.to_bigint().unwrap());
     let b = FiniteField::new(12.to_bigint().unwrap(), 13.to_bigint().unwrap());
@@ -132,5 +145,20 @@ fn main() {
         println!("p: {} {:?}", i, res_2);
 
     }
+    println!("------Exercise 8----------");
+    let a1 = FiniteField::new(2.to_bigint().unwrap(), 19.to_bigint().unwrap());
+    let b1 = FiniteField::new(7.to_bigint().unwrap(), 19.to_bigint().unwrap());
+    let c1 = FiniteField::new(5.to_bigint().unwrap(), 19.to_bigint().unwrap());
+    println!("{}", a1 / b1.clone() == FiniteField::new(3.to_bigint().unwrap(), 19.to_bigint().unwrap()));
+    println!("{}", b1 / c1 == FiniteField::new(9.to_bigint().unwrap(), 19.to_bigint().unwrap()));
+    let a2 = FiniteField::new(3.to_bigint().unwrap(), 31.to_bigint().unwrap());
+    let b2 = FiniteField::new(24.to_bigint().unwrap(), 31.to_bigint().unwrap());
+    let c2 = FiniteField::new(17.to_bigint().unwrap(), 31.to_bigint().unwrap());
+    let d2 = FiniteField::new(4.to_bigint().unwrap(), 31.to_bigint().unwrap());
+    let e2 = FiniteField::new(11.to_bigint().unwrap(), 31.to_bigint().unwrap());
+    println!("{}", a2 / b2);
+    // Current pow operation does not handle negative exponents
+    // println!("{}", c2.pow(-3.to_bigint().unwrap()));
+    // println!("{}", d2.pow(-4.to_bigint().unwrap()) * e2);
 
 }

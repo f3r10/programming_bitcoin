@@ -16,6 +16,12 @@ impl FiniteField {
         }
         FiniteField { num, prime}
     }
+
+    pub fn pow(self, exponent: u32) -> Self {
+        let num = self.num.pow(exponent).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        FiniteField { num, prime: self.prime.clone()}
+
+    }
     
 }
 
@@ -77,6 +83,7 @@ fn main() {
     let c = FiniteField::new(6.to_bigint().unwrap(), 13.to_bigint().unwrap());
     let d = FiniteField::new(8.to_bigint().unwrap(), 13.to_bigint().unwrap());
     let e = FiniteField::new(6.to_bigint().unwrap(), 13.to_bigint().unwrap());
+    let f = FiniteField::new(5.to_bigint().unwrap(), 13.to_bigint().unwrap());
 
     println!("{}", a == b);
     println!("{}", a == a);
@@ -113,5 +120,17 @@ fn main() {
     } 
     println!("------Exercise 6----------");
     println!("{}", a.clone() * b.clone() == e);
+    println!("------Exercise 7----------");
+    println!("{}", a.clone().pow(3) == f);
+    let p:Vec<u32> = [7, 11, 17, 31].to_vec();
+    for i in p {
+        let mut res_2: Vec<BigInt> = Vec::new();
+        for j in 1..i {
+            let num = FiniteField::new(j.to_bigint().unwrap(), i.to_bigint().unwrap());
+            res_2.push(num.pow(i - 1).num);
+        }
+        println!("p: {} {:?}", i, res_2);
+
+    }
 
 }

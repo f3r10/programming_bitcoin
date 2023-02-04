@@ -1,4 +1,6 @@
-use std::{fmt, ops::{Add, Sub}};
+use std::{fmt, ops::{Add, Sub, Rem}};
+
+use num_bigint::ToBigInt;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -76,5 +78,11 @@ fn main() {
     println!("------Exercise 3----------");
     println!("{}", a + b == c);
     println!("{}", a - b == d);
+    println!("------Exercise 4----------");
+    println!("{}", (95_i32 * 45_i32 * 32_i32).rem_euclid(97));
+    println!("{}", (17_i32 * 13_i32 * 19_i32 * 44_i32).rem_euclid(97));
+    // The result of the operation was so large that I got an "attempt to multiply with overflow" that it is 
+    // why I had to use the num_bigint crate
+    println!("{}", (12_i32.to_bigint().unwrap().pow(7) * 77_i32.to_bigint().unwrap().pow(49)).rem(97));
 
 }

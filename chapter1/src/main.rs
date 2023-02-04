@@ -84,5 +84,20 @@ fn main() {
     // The result of the operation was so large that I got an "attempt to multiply with overflow" that it is 
     // why I had to use the num_bigint crate
     println!("{}", (12_i32.to_bigint().unwrap().pow(7) * 77_i32.to_bigint().unwrap().pow(49)).rem(97));
+    println!("------Exercise 5----------");
+    let k:Vec<i32> = [1, 3, 7, 13, 18].to_vec();
+    let started_set: Vec<i32> = (0..19).collect();
+    println!("{:?}", started_set);
+    for i in k  {
+        let mut res: Vec<i32> = Vec::new();
+        for j in 0..19 {
+            res.push((i * j).rem_euclid(19))
+        }
+        print!("{:?}", res);
+        print!("->");
+        res.sort();
+        println!("{:?}", res);
+        
+    } 
 
 }

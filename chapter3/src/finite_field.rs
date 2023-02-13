@@ -5,7 +5,7 @@ use num_bigint::{ToBigInt, BigInt};
 
 #[derive(Debug, Clone, Eq)]
 pub struct FiniteField {
-    num: BigInt,
+    pub num: BigInt,
     pub prime: BigInt,
     
 }
@@ -16,6 +16,13 @@ impl FiniteField {
             panic!("Num {} not in field range 0 to {}", num, prime);
         }
         FiniteField { num: num.to_bigint().unwrap(), prime: prime.to_bigint().unwrap()}
+    }
+
+    pub fn new_big_int(num: BigInt, prime: BigInt) -> Self {
+        if num >= prime {
+            panic!("Num {} not in field range 0 to {}", num, prime);
+        }
+        FiniteField { num, prime}
     }
 
     pub fn pow(&self, exponent: BigInt) -> Self {

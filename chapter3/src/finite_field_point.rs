@@ -1,13 +1,13 @@
 use std::{fmt, ops::Add};
 
-use num_bigint::ToBigInt;
+use num_bigint::BigInt;
 
 use crate::{PointWrapper, finite_field::FiniteField};
 
 //https://www.desmos.com/calculator/ialhd71we3
 impl crate::PointWrapper<FiniteField> {
     pub fn new(x: FiniteField, y: FiniteField, a: FiniteField, b: FiniteField) -> Self {
-        if y.pow(2.to_bigint().unwrap()) != (x.pow(3.to_bigint().unwrap()) + a.clone() * x.clone() + b.clone()) {
+        if y.pow(BigInt::from(2)) != (x.pow(BigInt::from(3)) + a.clone() * x.clone() + b.clone()) {
             panic!("({:?}, {:?}) is not on the curve", x, y);
         }
         PointWrapper::Point { x, y, a, b }
@@ -96,10 +96,10 @@ impl Add for PointWrapper<FiniteField> {
                     return PointWrapper::Inf;
                 } else if x1 != x2 {
                     let s = (y2.clone() - y1.clone()) / (x2.clone() - x1.clone());
-                    let x = s.pow(2.to_bigint().unwrap()) - x1.clone() - x2.clone();
+                    let x = s.pow(BigInt::from(2)) - x1.clone() - x2.clone();
                     let y = s * (x1.clone() - x.clone()) - y1.clone();
                     return PointWrapper::Point{ x, y, a: a1.clone(), b: b1.clone() };
-                } else if p1 == p2 && y1.clone() == FiniteField::new_big_int(0.to_bigint().unwrap(), x1.clone().prime) {
+                } else if p1 == p2 && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime) {
                     PointWrapper::Inf
                 } else if p1 == p2 {
                         todo!()

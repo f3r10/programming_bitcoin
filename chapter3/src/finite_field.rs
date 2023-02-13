@@ -1,6 +1,6 @@
 use std::{fmt, ops::{Add, Sub, Mul, Div}};
 
-use num_bigint::{ToBigInt, BigInt};
+use num_bigint::BigInt;
 
 
 #[derive(Debug, Clone, Eq)]
@@ -15,7 +15,7 @@ impl FiniteField {
         if num >= prime {
             panic!("Num {} not in field range 0 to {}", num, prime);
         }
-        FiniteField { num: num.to_bigint().unwrap(), prime: prime.to_bigint().unwrap()}
+        FiniteField { num: BigInt::from(num), prime: BigInt::from(prime)}
     }
 
     pub fn new_big_int(num: BigInt, prime: BigInt) -> Self {
@@ -27,7 +27,7 @@ impl FiniteField {
 
     pub fn pow(&self, exponent: BigInt) -> Self {
         // forzing a negative expontent into positive using module arithmetic the exponent should be between {0, p-2}
-        let positive_exponent = exponent.modpow(&1_i32.to_bigint().unwrap(), &(self.prime.clone() - 1.to_bigint().unwrap()));
+        let positive_exponent = exponent.modpow(&BigInt::from(1), &(self.prime.clone() - BigInt::from(1)));
         let num = self.num.modpow(&positive_exponent, &self.prime);
         FiniteField { num, prime: self.prime.clone()}
 
@@ -57,7 +57,7 @@ impl Add for FiniteField{
         if self.prime != other.prime {
             panic!("Cannot add two numbers is different Fields");
         }
-        let num  = (self.num + other.num).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        let num  = (self.num + other.num).modpow(&BigInt::from(1), &self.prime);
         FiniteField {num, prime : self.prime}
     }
 }
@@ -69,7 +69,7 @@ impl Sub for FiniteField {
         if self.prime != other.prime {
             panic!("Cannot sub two numbers is different Fields");
         }
-        let num  = (self.num - other.num).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        let num  = (self.num - other.num).modpow(&BigInt::from(1), &self.prime);
         FiniteField {num, prime : self.prime}
 
     }
@@ -82,7 +82,7 @@ impl Mul for FiniteField{
         if self.prime != other.prime {
             panic!("Cannot multiply two numbers is different Fields");
         }
-        let num = (self.num * other.num).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        let num = (self.num * other.num).modpow(&BigInt::from(1), &self.prime);
         FiniteField {num, prime : self.prime}
     }
 }
@@ -94,8 +94,8 @@ impl Div for FiniteField {
         if self.prime != other.prime {
             panic!("Cannot multiply two numbers is different Fields");
         }
-        let exp = self.prime.clone() - 2.to_bigint().unwrap(); 
-        let num = (self.num * other.num.pow(exp.try_into().unwrap())).modpow(&1_i32.to_bigint().unwrap(), &self.prime);
+        let exp = self.prime.clone() - BigInt::from(2); 
+        let num = (self.num * other.num.pow(exp.try_into().unwrap())).modpow(&BigInt::from(1), &self.prime);
         FiniteField {num, prime: self.prime}
     }
 }

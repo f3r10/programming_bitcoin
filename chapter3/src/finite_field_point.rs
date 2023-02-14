@@ -2,7 +2,7 @@ use std::{fmt, ops::Add};
 
 use num_bigint::BigInt;
 
-use crate::{PointWrapper, finite_field::FiniteField};
+use crate::{finite_field::FiniteField, PointWrapper};
 
 //https://www.desmos.com/calculator/ialhd71we3
 impl crate::PointWrapper<FiniteField> {
@@ -22,8 +22,8 @@ impl PartialEq for PointWrapper<FiniteField> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (PointWrapper::Inf, PointWrapper::Inf) => true,
-            (PointWrapper::Inf, PointWrapper::Point {..}) => false,
-            (PointWrapper::Point {..}, PointWrapper::Inf) => false,
+            (PointWrapper::Inf, PointWrapper::Point { .. }) => false,
+            (PointWrapper::Point { .. }, PointWrapper::Inf) => false,
             (
                 PointWrapper::Point {
                     x: x1,
@@ -53,13 +53,17 @@ impl fmt::Display for PointWrapper<FiniteField> {
             PointWrapper::Inf => {
                 write!(f, "infinity")
             }
-            PointWrapper::Point{
+            PointWrapper::Point {
                 x: x1,
                 y: y1,
                 a: a1,
                 b: b1,
             } => {
-                write!(f, "Point({:?}, {:?})_{}_{} FieldElement({})", x1.num, y1.num, a1.num, b1.num, x1.prime)
+                write!(
+                    f,
+                    "Point({:?}, {:?})_{}_{} FieldElement({})",
+                    x1.num, y1.num, a1.num, b1.num, x1.prime
+                )
             }
         }
     }
@@ -74,20 +78,20 @@ impl Add for PointWrapper<FiniteField> {
             (PointWrapper::Inf, p @ PointWrapper::Point { .. }) => p.clone(),
             (p @ PointWrapper::Point { .. }, PointWrapper::Inf) => p.clone(),
             (
-                p1 @ PointWrapper::Point{
-                x: x1,
-                y: y1,
-                a: a1,
-                b: b1,
-            },
-                p2 @ PointWrapper::Point{
-                x: x2,
-                y: y2,
-                a: a2,
-                b: b2,
-            },
+                p1 @ PointWrapper::Point {
+                    x: x1,
+                    y: y1,
+                    a: a1,
+                    b: b1,
+                },
+                p2 @ PointWrapper::Point {
+                    x: x2,
+                    y: y2,
+                    a: a2,
+                    b: b2,
+                },
             ) => {
-                    // todo!()
+                // todo!()
                 if a1 != a2 || b1 != b2 {
                     panic!("Points {}, {} are not on the same curve", p1, p2)
                 }
@@ -98,15 +102,25 @@ impl Add for PointWrapper<FiniteField> {
                     let s = (y2.clone() - y1.clone()) / (x2.clone() - x1.clone());
                     let x = s.pow(BigInt::from(2)) - x1.clone() - x2.clone();
                     let y = s * (x1.clone() - x.clone()) - y1.clone();
-                    return PointWrapper::Point{ x, y, a: a1.clone(), b: b1.clone() };
-                } else if p1 == p2 && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime) {
+                    return PointWrapper::Point {
+                        x,
+                        y,
+                        a: a1.clone(),
+                        b: b1.clone(),
+                    };
+                } else if p1 == p2
+                    && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime)
+                {
                     PointWrapper::Inf
                 } else if p1 == p2 {
-                        todo!()
-                    // let s: i32 = (3.to_bigint().unwrap() * x1.clone().pow(2.to_bigint().unwrap()) + a1) / (2.to_bigint().unwrap() * y1.clone());
-                    // let x = s.pow(2.to_bigint().unwrap()) - 2.to_bigint().unwrap() * x1;
-                    // let y = s * (x1 - x) - y1;
-                    // return PointWrapper::Point{ x, y, a: a1, b: b1 };
+                    let s = (FiniteField::new_big_int(BigInt::from(3), x1.clone().prime)
+                        * x1.clone().pow(BigInt::from(2))
+                        + a1.clone())
+                        / (FiniteField::new_big_int(BigInt::from(2), x1.clone().prime)
+                            * y1.clone());
+                    let x = s.pow(BigInt::from(2)) - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime) * x1.clone();
+                    let y = s * (x1.clone() - x.clone()) - y1.clone();
+                    return PointWrapper::Point { x, y, a: a1.clone(), b: b1.clone() };
                 } else {
                     panic!("no more cases")
                 }
@@ -169,6 +183,11 @@ mod point_finite_field_test {
                 p1: (143, 98),
                 p2: (76, 66),
                 res: (47, 71),
+            },
+            TestPoint {
+                p1: (192, 105),
+                p2: (192, 105),
+                res: (49, 71),
             },
         ];
         for p in test_points {

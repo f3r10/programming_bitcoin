@@ -24,7 +24,7 @@ fn main() {
         a.clone(),
         b.clone(),
     );
-    println!("{}", p3.clone() + p3);
+    println!("{} * {} = {}", 2, p3.clone(), p3.clone() + p3);
     let p4 = PointWrapper::new(
         FiniteField::new(143, prime),
         FiniteField::new(98, prime),
@@ -38,10 +38,11 @@ fn main() {
         a.clone(),
         b.clone(),
     );
-    println!("{}", p5.clone() + p5.clone());
-    println!("{}", p5.clone() + p5.clone() + p5.clone() + p5.clone());
+    println!("{} * {} = {}", 2, p5.clone(), p5.clone() + p5.clone());
+    println!("{} * {} = {}", 4, p5.clone(), p5.clone() + p5.clone() + p5.clone() + p5.clone());
     println!(
-        "{}",
+        "{} * {} = {}",
+        8, p5.clone(),
         p5.clone()
             + p5.clone()
             + p5.clone()
@@ -52,7 +53,8 @@ fn main() {
             + p5.clone()
     );
     println!(
-        "{}",
+        "{} * {} = {}",
+        21, p5.clone(),
         p5.clone()
             + p5.clone()
             + p5.clone()
@@ -93,6 +95,8 @@ fn main() {
         }
     }
     println!("The order of the group generate by (15, 86) is {}", count);
+    let p6 = count * p5.clone();
+    println!("{} * {} = {}", count, p5, p6)
 }
 
 // y^2 = x^3 + y

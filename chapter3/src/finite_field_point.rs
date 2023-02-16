@@ -1,4 +1,4 @@
-use std::{fmt, ops::Add};
+use std::{fmt, ops::{Add, Mul}};
 
 use num_bigint::BigInt;
 
@@ -129,6 +129,24 @@ impl Add for PointWrapper<FiniteField> {
     }
 }
 
+impl Mul<PointWrapper<FiniteField>> for i32 {
+    type Output = PointWrapper<FiniteField>;
+
+    fn mul(self, rhs: PointWrapper<FiniteField>) -> Self::Output {
+        let mut coef = self;
+        let mut current = rhs; 
+        let mut result = PointWrapper::new_inf();
+        while coef > 0 {
+            if coef & 1 == 1{
+                result = result + current.clone();
+            }
+            current = current.clone() + current;
+            coef >>= 1
+        }
+        return result;
+    }
+}
+
 #[cfg(test)]
 mod point_finite_field_test {
     use crate::{finite_field::FiniteField, PointWrapper};
@@ -205,5 +223,47 @@ mod point_finite_field_test {
             let p_res = PointWrapper::new(x_res, y_res, a, b);
             assert_eq!(p_res, p1 + p2)
         }
+    }
+    #[test]
+    fn test_mul_binary_expansion(){
+        let prime = 223;
+        let a = FiniteField::new(0, prime);
+        let b = FiniteField::new(7, prime);
+        let p5 = PointWrapper::new(
+            FiniteField::new(15, prime),
+            FiniteField::new(86, prime),
+            a.clone(),
+            b.clone(),
+        );
+        assert_eq!(PointWrapper::new_inf(), 7 * p5);
+        let p5 = PointWrapper::new(
+            FiniteField::new(47, prime),
+            FiniteField::new(71, prime),
+            a.clone(),
+            b.clone(),
+        );
+
+        let res8 = PointWrapper::new(
+            FiniteField::new(116, prime),
+            FiniteField::new(55, prime),
+            a.clone(),
+            b.clone(),
+        );
+        let res4 = PointWrapper::new(
+            FiniteField::new(194, prime),
+            FiniteField::new(51, prime),
+            a.clone(),
+            b.clone(),
+        );
+        let res2 = PointWrapper::new(
+            FiniteField::new(36, prime),
+            FiniteField::new(111, prime),
+            a.clone(),
+            b.clone(),
+        );
+        assert_eq!(res2, 2 * p5.clone());
+        assert_eq!(res4, 4 * p5.clone());
+        assert_eq!(res8, 8 * p5.clone());
+        assert_eq!(PointWrapper::new_inf(), 21 * p5.clone());
     }
 }

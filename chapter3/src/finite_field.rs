@@ -95,7 +95,7 @@ impl Div for FiniteField {
             panic!("Cannot multiply two numbers is different Fields");
         }
         let exp = self.prime.clone() - BigInt::from(2); 
-        let num = (self.num * other.num.pow(exp.try_into().unwrap())).modpow(&BigInt::from(1), &self.prime);
+        let num = (self.num * other.num.modpow(&exp, &self.prime.clone())).modpow(&BigInt::from(1), &self.prime);
         FiniteField {num, prime: self.prime}
     }
 }

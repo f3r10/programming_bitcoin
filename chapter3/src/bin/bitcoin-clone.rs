@@ -1,4 +1,5 @@
 use chapter3::{finite_field::FiniteField, PointWrapper};
+use num_bigint::BigInt;
 
 fn main() {
     println!("(17, 64) over F_103 -> {}", check(17, 64, 103));
@@ -96,7 +97,8 @@ fn main() {
     }
     println!("The order of the group generate by (15, 86) is {}", count);
     let p6 = count * p5.clone();
-    println!("{} * {} = {}", count, p5, p6)
+    println!("{} * {} = {}", count, p5, p6);
+    println!("with big ints {}", BigInt::from(count) * p5.clone());
 }
 
 // y^2 = x^3 + y

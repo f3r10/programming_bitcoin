@@ -1,4 +1,4 @@
-use std::{fmt, ops::{Add, Mul}};
+use std::{fmt, ops::{Add, Mul}, rc::Rc};
 
 use num_bigint::BigInt;
 
@@ -142,6 +142,24 @@ impl Mul<PointWrapper<FiniteField>> for i32 {
             }
             current = current.clone() + current;
             coef >>= 1
+        }
+        return result;
+    }
+}
+
+impl Mul<PointWrapper<FiniteField>> for BigInt {
+    type Output = PointWrapper<FiniteField>;
+
+    fn mul(self, rhs: PointWrapper<FiniteField>) -> Self::Output {
+        let mut coef = Rc::new(self);
+        let mut current = rhs; 
+        let mut result = PointWrapper::new_inf();
+        while coef.as_ref() > &BigInt::from(0) {
+            if coef.as_ref() & BigInt::from(1) == BigInt::from(1){
+                result = result + current.clone();
+            }
+            current = current.clone() + current;
+            *Rc::get_mut(&mut coef).unwrap() >>= 1
         }
         return result;
     }

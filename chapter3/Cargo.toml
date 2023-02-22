@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 num-bigint = "0.4"
+const_num_bigint = "0.2.1"

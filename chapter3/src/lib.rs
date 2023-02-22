@@ -3,10 +3,12 @@ use std::{ops::Mul, fmt::Display};
 use finite_field::FiniteField;
 use num_bigint::BigInt;
 use once_cell::sync::Lazy;
+use signature::Signature;
 
 pub mod real_numbers_point;
 pub mod finite_field;
 pub mod finite_field_point;
+pub mod signature;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {
@@ -51,6 +53,18 @@ impl S256Point {
         S256Point{point: PointWrapper::new(x.field, y.field, a, b)}
     }
 
+    pub fn verify(self, z: BigInt, sig: Signature) -> bool {
+        let n_2: BigInt = N.to_owned() - 2;
+        let s_inv = sig.s.modpow(&n_2, &N);
+        let u = (z * s_inv.clone()).modpow(&BigInt::from(1), &N);
+        let v = (sig.r.clone() * s_inv.clone()).modpow(&BigInt::from(1), &N);
+        let total = u * G.to_owned() + v * self;
+        match total {
+            PointWrapper::Inf => false,
+            PointWrapper::Point { x, y: _, a: _, b: _ } => x.num == sig.r,
+        }
+    }
+
 }
 
 impl Mul<S256Point> for BigInt{
@@ -66,12 +80,27 @@ impl Mul<S256Point> for BigInt{
 #[cfg(test)]
 mod secp256k1_tests {
 
-    use crate::{PointWrapper, N, G};
+    use num_bigint::BigInt;
+
+    use crate::{PointWrapper, N, G, signature::Signature, S256Point, S256Field};
 
     #[test]
     fn s256_point_test() {
         assert_eq!(PointWrapper::new_inf(), N.to_owned() * G.point.clone())
     }
+
+    #[test]
+    fn point_verification() {
+        let z: BigInt = BigInt::parse_bytes(b"bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423", 16).unwrap();
+        let r: BigInt = BigInt::parse_bytes(b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6", 16).unwrap();
+        let s: BigInt = BigInt::parse_bytes(b"8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec", 16).unwrap();
+        let px: BigInt = BigInt::parse_bytes(b"04519fac3d910ca7e7138f7013706f619fa8f033e6ec6e09370ea38cee6a7574", 16).unwrap();
+        let py: BigInt = BigInt::parse_bytes(b"82b51eab8c27c66e26c858a079bcdf4f1ada34cec420cafc7eac1a42216fb6c4", 16).unwrap();
+        let point = S256Point::new(S256Field::new(px), S256Field::new(py));
+        let sig = Signature::new(r, s);
+        assert!(point.verify(z, sig))
+    }
+    //TODO Add a negative point verification
 }
 
 //TODO check if this abstraction approach would be better

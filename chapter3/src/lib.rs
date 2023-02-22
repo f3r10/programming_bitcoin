@@ -2,6 +2,7 @@ use std::{ops::Mul, fmt::Display};
 
 use finite_field::FiniteField;
 use num_bigint::BigInt;
+use once_cell::sync::Lazy;
 
 pub mod real_numbers_point;
 pub mod finite_field;
@@ -31,6 +32,10 @@ impl Display for S256Field {
     }
 }
 
+pub static N: Lazy<BigInt> = Lazy::new(|| {
+    BigInt::parse_bytes(b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16).unwrap()
+});
+
 impl S256Point {
     pub fn new(x: S256Field, y: S256Field) -> S256Point {
         let a = FiniteField::new_big_int(BigInt::from(0), x.field.clone().prime);
@@ -54,15 +59,14 @@ impl Mul<S256Point> for BigInt{
 mod secp256k1_tests {
     use num_bigint::BigInt;
 
-    use crate::{PointWrapper, S256Point, S256Field};
+    use crate::{PointWrapper, S256Point, S256Field, N};
 
     #[test]
     fn s256_point_test() {
-        let n: BigInt = BigInt::parse_bytes(b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16).unwrap();
         let x: BigInt = BigInt::parse_bytes(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", 16).unwrap();
         let y: BigInt = BigInt::parse_bytes(b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", 16).unwrap();
         let g = S256Point::new(S256Field::new(x), S256Field::new(y));
-        assert_eq!(PointWrapper::new_inf(), n*g)
+        assert_eq!(PointWrapper::new_inf(), N.to_owned() * g)
     }
 }
 

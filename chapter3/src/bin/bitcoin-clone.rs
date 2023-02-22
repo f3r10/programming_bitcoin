@@ -1,4 +1,4 @@
-use chapter3::{finite_field::FiniteField, PointWrapper, S256Point, S256Field};
+use chapter3::{finite_field::FiniteField, PointWrapper, S256Point, S256Field, N};
 use num_bigint::BigInt;
 
 fn main() {
@@ -99,7 +99,6 @@ fn main() {
     let p6 = count * p5.clone();
     println!("{} * {} = {}", count, p5, p6);
     println!("with big ints {}", BigInt::from(count) * p5.clone());
-    let n: BigInt = BigInt::parse_bytes(b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16).unwrap();
     let x: BigInt = BigInt::parse_bytes(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", 16).unwrap();
     let y: BigInt = BigInt::parse_bytes(b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", 16).unwrap();
     let g = S256Point::new(S256Field::new(x), S256Field::new(y));
@@ -111,17 +110,16 @@ fn main() {
     let px: BigInt = BigInt::parse_bytes(b"04519fac3d910ca7e7138f7013706f619fa8f033e6ec6e09370ea38cee6a7574", 16).unwrap();
     let py: BigInt = BigInt::parse_bytes(b"82b51eab8c27c66e26c858a079bcdf4f1ada34cec420cafc7eac1a42216fb6c4", 16).unwrap();
     let point = S256Point::new(S256Field::new(px), S256Field::new(py));
-    let n_2: BigInt = n.clone() - 2;
-    let s_inv = s.modpow(&n_2, &n);
+    let n_2: BigInt = N.to_owned() - 2;
+    let s_inv = s.modpow(&n_2, &N);
     let u_1:BigInt = z * s_inv.clone();
     let v_1:BigInt = r.clone() * s_inv.clone();
-    let u = u_1.modpow(&BigInt::from(1), &n);
-    let v = v_1.modpow(&BigInt::from(1), &n);
+    let u = u_1.modpow(&BigInt::from(1), &N);
+    let v = v_1.modpow(&BigInt::from(1), &N);
     match (u*g) + (v *point){
         PointWrapper::Inf => println!("this is invalid"),
         PointWrapper::Point { x, y: _, a: _, b: _ } => println!("num: {}, r: {}, r==n: {}", x.num, r.clone(), x.num == r.clone()),
     }
-    // println!("{} = {}", res.x)
 }
 
 // y^2 = x^3 + y

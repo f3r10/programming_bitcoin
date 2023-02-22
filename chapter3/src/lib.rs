@@ -15,7 +15,9 @@ pub enum PointWrapper<A> {
 }
 
 
+#[derive(Debug, Clone)]
 pub struct S256Point { point: PointWrapper<FiniteField> }
+#[derive(Debug, Clone)]
 pub struct S256Field { field: FiniteField }
 
 impl S256Field {
@@ -34,6 +36,12 @@ impl Display for S256Field {
 
 pub static N: Lazy<BigInt> = Lazy::new(|| {
     BigInt::parse_bytes(b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16).unwrap()
+});
+
+pub static G: Lazy<S256Point> = Lazy::new(|| {
+    let x: BigInt = BigInt::parse_bytes(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", 16).unwrap();
+    let y: BigInt = BigInt::parse_bytes(b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", 16).unwrap();
+    S256Point::new(S256Field::new(x), S256Field::new(y))
 });
 
 impl S256Point {
@@ -57,16 +65,12 @@ impl Mul<S256Point> for BigInt{
 
 #[cfg(test)]
 mod secp256k1_tests {
-    use num_bigint::BigInt;
 
-    use crate::{PointWrapper, S256Point, S256Field, N};
+    use crate::{PointWrapper, N, G};
 
     #[test]
     fn s256_point_test() {
-        let x: BigInt = BigInt::parse_bytes(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", 16).unwrap();
-        let y: BigInt = BigInt::parse_bytes(b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", 16).unwrap();
-        let g = S256Point::new(S256Field::new(x), S256Field::new(y));
-        assert_eq!(PointWrapper::new_inf(), N.to_owned() * g)
+        assert_eq!(PointWrapper::new_inf(), N.to_owned() * G.point.clone())
     }
 }
 

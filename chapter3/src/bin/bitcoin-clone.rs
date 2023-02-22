@@ -1,4 +1,4 @@
-use chapter3::{finite_field::FiniteField, PointWrapper, S256Point, S256Field, N};
+use chapter3::{finite_field::FiniteField, PointWrapper, S256Point, S256Field, N, G};
 use num_bigint::BigInt;
 
 fn main() {
@@ -99,9 +99,6 @@ fn main() {
     let p6 = count * p5.clone();
     println!("{} * {} = {}", count, p5, p6);
     println!("with big ints {}", BigInt::from(count) * p5.clone());
-    let x: BigInt = BigInt::parse_bytes(b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", 16).unwrap();
-    let y: BigInt = BigInt::parse_bytes(b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", 16).unwrap();
-    let g = S256Point::new(S256Field::new(x), S256Field::new(y));
 
     println!("=====exercise 6=======");
     let z: BigInt = BigInt::parse_bytes(b"bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423", 16).unwrap();
@@ -116,7 +113,7 @@ fn main() {
     let v_1:BigInt = r.clone() * s_inv.clone();
     let u = u_1.modpow(&BigInt::from(1), &N);
     let v = v_1.modpow(&BigInt::from(1), &N);
-    match (u*g) + (v *point){
+    match (u*G.to_owned()) + (v *point){
         PointWrapper::Inf => println!("this is invalid"),
         PointWrapper::Point { x, y: _, a: _, b: _ } => println!("num: {}, r: {}, r==n: {}", x.num, r.clone(), x.num == r.clone()),
     }

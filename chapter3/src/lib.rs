@@ -9,6 +9,7 @@ pub mod real_numbers_point;
 pub mod finite_field;
 pub mod finite_field_point;
 pub mod signature;
+pub mod private_key;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {
@@ -32,7 +33,7 @@ impl S256Field {
 
 impl Display for S256Field {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:x}", self.field.num)
+        write!(f, "{:#064x}", self.field.num)
     }
 }
 
@@ -80,9 +81,11 @@ impl Mul<S256Point> for BigInt{
 #[cfg(test)]
 mod secp256k1_tests {
 
+    use hex_literal::hex;
     use num_bigint::BigInt;
+    use sha2::{Sha256, Digest};
 
-    use crate::{PointWrapper, N, G, signature::Signature, S256Point, S256Field};
+    use crate::{PointWrapper, N, G, signature::Signature, S256Point, S256Field, private_key::PrivateKey};
 
     #[test]
     fn s256_point_test() {
@@ -90,7 +93,7 @@ mod secp256k1_tests {
     }
 
     #[test]
-    fn point_verification() {
+    fn point_verification_test() {
         let z: BigInt = BigInt::parse_bytes(b"bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423", 16).unwrap();
         let r: BigInt = BigInt::parse_bytes(b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6", 16).unwrap();
         let s: BigInt = BigInt::parse_bytes(b"8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec", 16).unwrap();
@@ -101,6 +104,25 @@ mod secp256k1_tests {
         assert!(point.verify(z, sig))
     }
     //TODO Add a negative point verification
+
+    #[test]
+    fn point_sing_test() {
+        let sha256_z = Sha256::digest(Sha256::digest(b"Programming Bitcoin!"));
+        let e = BigInt::from(12345);
+        let z = BigInt::from_bytes_be(num_bigint::Sign::Plus, &sha256_z);
+        let p = PrivateKey::new(e);
+        let (public_x, public_y) = match p.point.clone().point{
+            PointWrapper::Inf => panic!("public key should not be point to infinity"),
+            PointWrapper::Point { x, y, a: _, b: _ } => (x, y),
+        };
+        let sig = p.sign(z.clone(), Some(BigInt::from(1234567890)));
+        assert_eq!(public_x.num.to_bytes_be().1, hex!("f01d6b9018ab421dd410404cb869072065522bf85734008f105cf385a023a80f"));
+        assert_eq!(public_y.num.to_bytes_be().1, hex!("0eba29d0f0c5408ed681984dc525982abefccd9f7ff01dd26da4999cf3f6a295"));
+        assert_eq!(z.to_bytes_be().1, hex!("969f6056aa26f7d2795fd013fe88868d09c9f6aed96965016e1936ae47060d48"));
+        assert_eq!(sig.r.to_bytes_be().1, hex!("2b698a0f0a4041b77e63488ad48c23e8e8838dd1fb7520408b121697b782ef22"));
+        assert_eq!(sig.s.to_bytes_be().1, hex!("1dbc63bfef4416705e602a7b564161167076d8b20990a0f26f316cff2cb0bc1a"));
+        assert!(p.point.clone().verify(z, sig))
+    }
 }
 
 //TODO check if this abstraction approach would be better

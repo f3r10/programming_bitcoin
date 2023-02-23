@@ -1,6 +1,6 @@
 use num_bigint::{BigInt, RandBigInt};
 
-use crate::{G, S256Point, signature::Signature, N, PointWrapper};
+use crate::{signature::Signature, PointWrapper, S256Point, G, N};
 
 #[derive(Debug)]
 pub struct PrivateKey {
@@ -11,8 +11,8 @@ pub struct PrivateKey {
 impl PrivateKey {
     pub fn new(secret: BigInt) -> Self {
         let point = secret.clone() * G.to_owned();
-        let point = S256Point{point};
-        PrivateKey { secret, point}
+        let point = S256Point { point };
+        PrivateKey { secret, point }
     }
 
     pub fn hex(self) -> String {
@@ -24,10 +24,15 @@ impl PrivateKey {
         //DANGER this is just for now, it has to be changed later
         let k = match ks {
             Some(v) => v,
-            None => rng.gen_bigint_range(&BigInt::from(0), &N), 
+            None => rng.gen_bigint_range(&BigInt::from(0), &N),
         };
         let r = match k.clone() * G.to_owned() {
-            PointWrapper::Point { x, y: _, a: _, b: _ } => x.num,
+            PointWrapper::Point {
+                x,
+                y: _,
+                a: _,
+                b: _,
+            } => x.num,
             PointWrapper::Inf => panic!("R point should not be point to infity"),
         };
         let k_inv = k.modpow(&(N.to_owned() - 2), &N);
@@ -37,5 +42,4 @@ impl PrivateKey {
         }
         Signature::new(r, s)
     }
-    
 }

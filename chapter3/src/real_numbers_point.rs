@@ -20,8 +20,8 @@ impl PartialEq for PointWrapper<i32> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (PointWrapper::Inf, PointWrapper::Inf) => true,
-            (PointWrapper::Inf, PointWrapper::Point {..}) => false,
-            (PointWrapper::Point {..}, PointWrapper::Inf) => false,
+            (PointWrapper::Inf, PointWrapper::Point { .. }) => false,
+            (PointWrapper::Point { .. }, PointWrapper::Inf) => false,
             (
                 PointWrapper::Point {
                     x: x1,
@@ -51,7 +51,7 @@ impl fmt::Display for PointWrapper<i32> {
             PointWrapper::Inf => {
                 write!(f, "infinity")
             }
-            PointWrapper::Point{
+            PointWrapper::Point {
                 x: x1,
                 y: y1,
                 a: a1,
@@ -69,21 +69,21 @@ impl Add for PointWrapper<i32> {
     fn add(self, other: Self) -> Self::Output {
         match (self, other) {
             (PointWrapper::Inf, PointWrapper::Inf) => PointWrapper::Inf,
-            (PointWrapper::Inf, p @ PointWrapper::Point{..}) => p,
-            (p @ PointWrapper::Point{..}, PointWrapper::Inf) => p,
+            (PointWrapper::Inf, p @ PointWrapper::Point { .. }) => p,
+            (p @ PointWrapper::Point { .. }, PointWrapper::Inf) => p,
             (
-                p1 @ PointWrapper::Point{
-                x: x1,
-                y: y1,
-                a: a1,
-                b: b1,
-            },
-                p2 @ PointWrapper::Point{
-                x: x2,
-                y: y2,
-                a: a2,
-                b: b2,
-            },
+                p1 @ PointWrapper::Point {
+                    x: x1,
+                    y: y1,
+                    a: a1,
+                    b: b1,
+                },
+                p2 @ PointWrapper::Point {
+                    x: x2,
+                    y: y2,
+                    a: a2,
+                    b: b2,
+                },
             ) => {
                 if a1 != a2 || b1 != b2 {
                     panic!("Points {}, {} are not on the same curve", p1, p2)
@@ -95,14 +95,14 @@ impl Add for PointWrapper<i32> {
                     let s = (y2 - y1) / (x2 - x1);
                     let x = s.pow(2) - x1 - x2;
                     let y = s * (x1 - x) - y1;
-                    return PointWrapper::Point{ x, y, a: a1, b: b1 };
+                    return PointWrapper::Point { x, y, a: a1, b: b1 };
                 } else if p1 == p2 && y1 == 0 {
                     PointWrapper::Inf
                 } else if p1 == p2 {
                     let s: i32 = (3 * x1.pow(2) + a1) / (2 * y1);
                     let x = s.pow(2) - 2 * x1;
                     let y = s * (x1 - x) - y1;
-                    return PointWrapper::Point{ x, y, a: a1, b: b1 };
+                    return PointWrapper::Point { x, y, a: a1, b: b1 };
                 } else {
                     panic!("no more cases")
                 }

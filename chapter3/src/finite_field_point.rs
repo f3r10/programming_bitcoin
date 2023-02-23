@@ -1,4 +1,8 @@
-use std::{fmt, ops::{Add, Mul}, rc::Rc};
+use std::{
+    fmt,
+    ops::{Add, Mul},
+    rc::Rc,
+};
 
 use num_bigint::BigInt;
 
@@ -118,9 +122,15 @@ impl Add for PointWrapper<FiniteField> {
                         + a1.clone())
                         / (FiniteField::new_big_int(BigInt::from(2), x1.clone().prime)
                             * y1.clone());
-                    let x = s.pow(BigInt::from(2)) - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime) * x1.clone();
+                    let x = s.pow(BigInt::from(2))
+                        - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime) * x1.clone();
                     let y = s * (x1.clone() - x.clone()) - y1.clone();
-                    return PointWrapper::Point { x, y, a: a1.clone(), b: b1.clone() };
+                    return PointWrapper::Point {
+                        x,
+                        y,
+                        a: a1.clone(),
+                        b: b1.clone(),
+                    };
                 } else {
                     panic!("no more cases")
                 }
@@ -134,10 +144,10 @@ impl Mul<PointWrapper<FiniteField>> for i32 {
 
     fn mul(self, rhs: PointWrapper<FiniteField>) -> Self::Output {
         let mut coef = self;
-        let mut current = rhs; 
+        let mut current = rhs;
         let mut result = PointWrapper::new_inf();
         while coef > 0 {
-            if coef & 1 == 1{
+            if coef & 1 == 1 {
                 result = result + current.clone();
             }
             current = current.clone() + current;
@@ -152,10 +162,10 @@ impl Mul<PointWrapper<FiniteField>> for BigInt {
 
     fn mul(self, rhs: PointWrapper<FiniteField>) -> Self::Output {
         let mut coef = Rc::new(self);
-        let mut current = rhs; 
+        let mut current = rhs;
         let mut result = PointWrapper::new_inf();
         while coef.as_ref() > &BigInt::from(0) {
-            if coef.as_ref() & BigInt::from(1) == BigInt::from(1){
+            if coef.as_ref() & BigInt::from(1) == BigInt::from(1) {
                 result = result + current.clone();
             }
             current = current.clone() + current;
@@ -243,7 +253,7 @@ mod point_finite_field_test {
         }
     }
     #[test]
-    fn test_mul_binary_expansion(){
+    fn test_mul_binary_expansion() {
         let prime = 223;
         let a = FiniteField::new(0, prime);
         let b = FiniteField::new(7, prime);

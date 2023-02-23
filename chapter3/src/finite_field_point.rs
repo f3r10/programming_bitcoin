@@ -61,7 +61,7 @@ impl fmt::Display for PointWrapper<FiniteField> {
             } => {
                 write!(
                     f,
-                    "Point({:?}, {:?})_{}_{} FieldElement({})",
+                    "Point({:#x}, {:#x})_{}_{} FieldElement({})",
                     x1.num, y1.num, a1.num, b1.num, x1.prime
                 )
             }

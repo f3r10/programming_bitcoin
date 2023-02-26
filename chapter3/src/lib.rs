@@ -28,10 +28,14 @@ pub struct S256Field {
 
 impl S256Field {
     pub fn new(num: BigInt) -> S256Field {
-        let p: BigInt = BigInt::from(2).pow(256) - BigInt::from(2).pow(32) - BigInt::from(977);
         S256Field {
-            field: FiniteField::new_big_int(num, p),
+            field: FiniteField::new_big_int(num, P.to_owned()),
         }
+    }
+
+    pub fn sqrt(self) -> Self {
+        let new_field = self.field.pow((P.to_owned() + 1) / 4 );
+        S256Field { field: new_field }
     }
 }
 
@@ -40,6 +44,10 @@ impl Display for S256Field {
         write!(f, "{:#064x}", self.field.num)
     }
 }
+
+pub static P: Lazy<BigInt> = Lazy::new(|| {
+    BigInt::from(2).pow(256) - BigInt::from(2).pow(32) - BigInt::from(977)
+});
 
 pub static N: Lazy<BigInt> = Lazy::new(|| {
     BigInt::parse_bytes(
@@ -69,6 +77,43 @@ impl S256Point {
         let b = FiniteField::new_big_int(BigInt::from(7), x.field.clone().prime);
         S256Point {
             point: PointWrapper::new(x.field, y.field, a, b),
+        }
+    }
+    pub fn parse(sec_bin: &[u8]) -> Self {
+        if sec_bin[0] == 4 {
+            let x_parsed = BigInt::from_bytes_be(num_bigint::Sign::Plus, &sec_bin[1..33]);
+            let y_parsed = BigInt::from_bytes_be(num_bigint::Sign::Plus, &sec_bin[33..65]);
+            let x = S256Field::new(x_parsed);
+            let y = S256Field::new(y_parsed);
+            S256Point::new(x, y)
+        } else {
+            let is_even = sec_bin[0] == 2;
+            let x_parsed = BigInt::from_bytes_be(num_bigint::Sign::Plus, &sec_bin[1..]);
+            let x = S256Field::new(x_parsed);
+            let b = S256Field::new(BigInt::from(7));
+            let alpha = x.field.pow(BigInt::from(3)) + b.field;
+            let alpha = S256Field { field: alpha };
+            let beta = alpha.sqrt();
+            if beta.clone().field.num.pow(2) == BigInt::from(0) {
+                let even_beta = beta.clone();
+                let odd_beta = S256Field::new(P.to_owned() - beta.clone().field.num);
+                if is_even {
+                    S256Point::new(x, even_beta)
+                }
+                else {
+                    S256Point::new(x, odd_beta)
+                }
+            } else {
+                let even_beta = S256Field::new(P.to_owned() - beta.clone().field.num);
+                let odd_beta = beta.clone();
+                if is_even {
+                    S256Point::new(x, even_beta)
+                }
+                else {
+                    S256Point::new(x, odd_beta)
+                }
+            }
+
         }
     }
 
@@ -214,11 +259,27 @@ mod secp256k1_tests {
         );
         assert!(p.point.clone().verify(z, sig))
     }
+
     #[test]
-    fn test_256point_sec() {
+    fn test_256point_uncompressed_sec() {
         assert_eq!(PrivateKey::new(BigInt::from(5000)).point.sec(Some(false)), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
         assert_eq!(PrivateKey::new(BigInt::from(2018).pow(5)).point.sec(Some(false)), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
         assert_eq!(PrivateKey::new(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap()).point.sec(Some(false)), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
+    }
+
+    #[test]
+    fn test_256point_compressed_sec() {
+        assert_eq!(PrivateKey::new(BigInt::from(5001)).point.sec(Some(true)), "0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
+        assert_eq!(PrivateKey::new(BigInt::from(2019).pow(5)).point.sec(Some(true)), "02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701");
+        assert_eq!(PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap()).point.sec(Some(true)), "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690");
+    }
+
+    #[test]
+    fn test_s256point_parse_point_sec_bytes() {
+        let p_uncompressed_bytes = hex!("04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
+        assert_eq!(PrivateKey::new(BigInt::from(5000)).point.point, S256Point::parse(&p_uncompressed_bytes).point);
+        let p_compressed_bytes = hex!("0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
+        assert_eq!(PrivateKey::new(BigInt::from(5001)).point.point, S256Point::parse(&p_compressed_bytes).point);
     }
 }
 

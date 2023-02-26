@@ -1,4 +1,6 @@
-use chapter3::{finite_field::FiniteField, PointWrapper, S256Field, S256Point, G, N, private_key::PrivateKey};
+use chapter3::{
+    finite_field::FiniteField, private_key::PrivateKey, PointWrapper, S256Field, S256Point, G, N,
+};
 use num_bigint::BigInt;
 
 fn main() {
@@ -148,14 +150,20 @@ fn main() {
             y: _,
             a: _,
             b: _,
-        } => println!(
-            "r==n: {}",
-            x.num == r.clone()
-        ),
+        } => println!("r==n: {}", x.num == r.clone()),
     }
     let e = BigInt::from(5000);
     let p = PrivateKey::new(e);
-    println!("{}", p.point.sec(Some(false)))
+    println!("{}", p.point.clone().sec(Some(false)));
+    let p_bytes = [
+        4, 255, 229, 88, 227, 136, 133, 47, 1, 32, 228, 106, 242, 209, 179, 112, 248, 88, 84, 168,
+        235, 8, 65, 129, 30, 206, 14, 62, 3, 210, 130, 213, 124, 49, 93, 199, 40, 144, 164, 241,
+        10, 20, 129, 192, 49, 176, 59, 53, 27, 13, 199, 153, 1, 202, 24, 160, 12, 240, 9, 219, 219,
+        21, 122, 29, 16,
+    ];
+    let parsed = S256Point::parse(&p_bytes);
+    println!("before: {:?}", p.point);
+    println!("parsed: {:?}", parsed);
 }
 
 // y^2 = x^3 + y

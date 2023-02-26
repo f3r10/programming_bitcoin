@@ -34,7 +34,7 @@ impl S256Field {
     }
 
     pub fn sqrt(self) -> Self {
-        let new_field = self.field.pow((P.to_owned() + 1) / 4 );
+        let new_field = self.field.pow((P.to_owned() + 1) / 4);
         S256Field { field: new_field }
     }
 }
@@ -45,9 +45,8 @@ impl Display for S256Field {
     }
 }
 
-pub static P: Lazy<BigInt> = Lazy::new(|| {
-    BigInt::from(2).pow(256) - BigInt::from(2).pow(32) - BigInt::from(977)
-});
+pub static P: Lazy<BigInt> =
+    Lazy::new(|| BigInt::from(2).pow(256) - BigInt::from(2).pow(32) - BigInt::from(977));
 
 pub static N: Lazy<BigInt> = Lazy::new(|| {
     BigInt::parse_bytes(
@@ -99,8 +98,7 @@ impl S256Point {
                 let odd_beta = S256Field::new(P.to_owned() - beta.clone().field.num);
                 if is_even {
                     S256Point::new(x, even_beta)
-                }
-                else {
+                } else {
                     S256Point::new(x, odd_beta)
                 }
             } else {
@@ -108,12 +106,10 @@ impl S256Point {
                 let odd_beta = beta.clone();
                 if is_even {
                     S256Point::new(x, even_beta)
-                }
-                else {
+                } else {
                     S256Point::new(x, odd_beta)
                 }
             }
-
         }
     }
 
@@ -137,7 +133,7 @@ impl S256Point {
     pub fn sec(self, compressed: Option<bool>) -> String {
         match self.point {
             PointWrapper::Inf => panic!("Public point can not be point to infinity"),
-            PointWrapper::Point { x, y, a: _, b:_ } => {
+            PointWrapper::Point { x, y, a: _, b: _ } => {
                 if compressed.unwrap_or(true) {
                     if y.num.modpow(&BigInt::from(1), &BigInt::from(2)) == BigInt::from(0) {
                         let marker = &b"\x02"[0..1];
@@ -148,7 +144,6 @@ impl S256Point {
                         let x = &x.num.to_bytes_be().1.to_vec()[0..32];
                         hex::encode(&([marker, x].concat()))
                     }
-
                 } else {
                     let marker = &b"\x04"[0..1];
                     let x = &x.num.to_bytes_be().1.to_vec()[0..32];
@@ -160,7 +155,6 @@ impl S256Point {
             }
         }
     }
-
 }
 
 impl Mul<S256Point> for BigInt {
@@ -269,17 +263,37 @@ mod secp256k1_tests {
 
     #[test]
     fn test_256point_compressed_sec() {
-        assert_eq!(PrivateKey::new(BigInt::from(5001)).point.sec(Some(true)), "0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
-        assert_eq!(PrivateKey::new(BigInt::from(2019).pow(5)).point.sec(Some(true)), "02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701");
-        assert_eq!(PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap()).point.sec(Some(true)), "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690");
+        assert_eq!(
+            PrivateKey::new(BigInt::from(5001)).point.sec(Some(true)),
+            "0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::from(2019).pow(5))
+                .point
+                .sec(Some(true)),
+            "02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
+                .point
+                .sec(Some(true)),
+            "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690"
+        );
     }
 
     #[test]
     fn test_s256point_parse_point_sec_bytes() {
         let p_uncompressed_bytes = hex!("04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
-        assert_eq!(PrivateKey::new(BigInt::from(5000)).point.point, S256Point::parse(&p_uncompressed_bytes).point);
-        let p_compressed_bytes = hex!("0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
-        assert_eq!(PrivateKey::new(BigInt::from(5001)).point.point, S256Point::parse(&p_compressed_bytes).point);
+        assert_eq!(
+            PrivateKey::new(BigInt::from(5000)).point.point,
+            S256Point::parse(&p_uncompressed_bytes).point
+        );
+        let p_compressed_bytes =
+            hex!("0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
+        assert_eq!(
+            PrivateKey::new(BigInt::from(5001)).point.point,
+            S256Point::parse(&p_compressed_bytes).point
+        );
     }
 }
 

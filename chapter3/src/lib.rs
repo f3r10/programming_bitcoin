@@ -88,6 +88,21 @@ impl S256Point {
             } => x.num == sig.r,
         }
     }
+
+    pub fn sec(self) -> String {
+        match self.point {
+            PointWrapper::Inf => panic!("Public point can not be point to infinity"),
+            PointWrapper::Point { x, y, a: _, b:_ } => {
+                let marker = &b"\x04"[0..1];
+                let x = &x.num.to_bytes_be().1.to_vec()[0..32];
+                let y = &y.num.to_bytes_be().1.to_vec()[0..32];
+                let res = [marker, x, y];
+                let res = res.concat();
+                hex::encode(&res)
+            }
+        }
+    }
+
 }
 
 impl Mul<S256Point> for BigInt {
@@ -185,6 +200,12 @@ mod secp256k1_tests {
             hex!("1dbc63bfef4416705e602a7b564161167076d8b20990a0f26f316cff2cb0bc1a")
         );
         assert!(p.point.clone().verify(z, sig))
+    }
+    #[test]
+    fn test_256point_sec() {
+        assert_eq!(PrivateKey::new(BigInt::from(5000)).point.sec(), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
+        assert_eq!(PrivateKey::new(BigInt::from(2018).pow(5)).point.sec(), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
+        assert_eq!(PrivateKey::new(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap()).point.sec(), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
     }
 }
 

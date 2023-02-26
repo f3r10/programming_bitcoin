@@ -1,4 +1,4 @@
-use chapter3::{finite_field::FiniteField, PointWrapper, S256Field, S256Point, G, N};
+use chapter3::{finite_field::FiniteField, PointWrapper, S256Field, S256Point, G, N, private_key::PrivateKey};
 use num_bigint::BigInt;
 
 fn main() {
@@ -134,6 +134,7 @@ fn main() {
     )
     .unwrap();
     let point = S256Point::new(S256Field::new(px), S256Field::new(py));
+    println!("{}", point.clone().sec());
     let n_2: BigInt = N.to_owned() - 2;
     let s_inv = s.modpow(&n_2, &N);
     let u_1: BigInt = z * s_inv.clone();
@@ -148,12 +149,13 @@ fn main() {
             a: _,
             b: _,
         } => println!(
-            "num: {}, r: {}, r==n: {}",
-            x.num,
-            r.clone(),
+            "r==n: {}",
             x.num == r.clone()
         ),
     }
+    let e = BigInt::from(5000);
+    let p = PrivateKey::new(e);
+    println!("{}", p.point.sec())
 }
 
 // y^2 = x^3 + y

@@ -21,7 +21,7 @@ impl PrivateKey {
 
     pub fn sign(&self, z: BigInt, ks: Option<BigInt>) -> Signature {
         let mut rng = rand::thread_rng();
-        //DANGER this is just for now, it has to be changed later
+        //TODO DANGER this is just for now, it has to be changed later
         let k = match ks {
             Some(v) => v,
             None => rng.gen_bigint_range(&BigInt::from(0), &N),

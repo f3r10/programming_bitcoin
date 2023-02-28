@@ -10,6 +10,7 @@ pub mod finite_field_point;
 pub mod private_key;
 pub mod real_numbers_point;
 pub mod signature;
+pub mod utils;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

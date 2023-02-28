@@ -30,6 +30,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "num-bigint",
+ "num-integer",
  "once_cell",
  "rand",
  "sha2",

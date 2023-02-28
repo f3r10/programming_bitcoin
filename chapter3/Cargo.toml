@@ -12,5 +12,10 @@ once_cell = "1.17.1"
 sha2 = "0.10.6"
 hex = "0.4.3"
 
+[dependencies.num-integer]
+version = "0.1.42"
+default-features = false
+features = ["i128"]
+
 [dev-dependencies]
 hex-literal = "0.3.4"

@@ -1,5 +1,6 @@
 use chapter3::{
-    finite_field::FiniteField, private_key::PrivateKey, PointWrapper, S256Field, S256Point, G, N,
+    finite_field::FiniteField, private_key::PrivateKey, s256_field::S256Field,
+    s256_point::S256Point, PointWrapper, G, N,
 };
 use num_bigint::BigInt;
 

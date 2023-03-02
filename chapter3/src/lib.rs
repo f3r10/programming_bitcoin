@@ -180,12 +180,7 @@ impl Mul<S256Point> for BigInt {
     type Output = PointWrapper<FiniteField>;
 
     fn mul(self, rhs: S256Point) -> Self::Output {
-        let n: BigInt = BigInt::parse_bytes(
-            b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
-            16,
-        )
-        .unwrap();
-        let coef = self.modpow(&BigInt::from(1), &n);
+        let coef = self.modpow(&BigInt::from(1), &N);
         coef * rhs.point
     }
 }
@@ -293,9 +288,11 @@ mod secp256k1_tests {
             hex!("02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701")
         );
         assert_eq!(
-            hex::encode(PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
-                .point
-                .sec(Some(true))),
+            hex::encode(
+                PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
+                    .point
+                    .sec(Some(true))
+            ),
             "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690"
         );
     }
@@ -318,7 +315,9 @@ mod secp256k1_tests {
     #[test]
     fn test_256point_address() {
         assert_eq!(
-            PrivateKey::new(BigInt::from(5002)).point.address(Some(false), Some(true)),
+            PrivateKey::new(BigInt::from(5002))
+                .point
+                .address(Some(false), Some(true)),
             "mmTPbXQFxboEtNRkwfh6K51jvdtHLxGeMA"
         );
         assert_eq!(

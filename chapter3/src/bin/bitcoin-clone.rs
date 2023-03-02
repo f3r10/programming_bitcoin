@@ -136,7 +136,7 @@ fn main() {
     )
     .unwrap();
     let point = S256Point::new(S256Field::new(px), S256Field::new(py));
-    println!("{}", point.clone().sec(Some(false)));
+    println!("{}", hex::encode(point.clone().sec(Some(false))));
     let n_2: BigInt = N.to_owned() - 2;
     let s_inv = s.modpow(&n_2, &N);
     let u_1: BigInt = z * s_inv.clone();
@@ -154,7 +154,8 @@ fn main() {
     }
     let e = BigInt::from(5000);
     let p = PrivateKey::new(e);
-    println!("{}", p.point.clone().sec(Some(false)));
+    println!("{}", hex::encode(p.point.clone().sec(Some(false))));
+    println!("{}", p.point.clone().address(Some(true), Some(false)));
     let p_bytes = [
         4, 255, 229, 88, 227, 136, 133, 47, 1, 32, 228, 106, 242, 209, 179, 112, 248, 88, 84, 168,
         235, 8, 65, 129, 30, 206, 14, 62, 3, 210, 130, 213, 124, 49, 93, 199, 40, 144, 164, 241,

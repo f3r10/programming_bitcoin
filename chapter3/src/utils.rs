@@ -1,5 +1,7 @@
 use num_bigint::BigInt;
 use num_integer::Integer;
+use ripemd::Ripemd160;
+use sha2::{Sha256, Digest};
 
 const BASE58_ALPHABET: &'static [u8] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -30,6 +32,19 @@ pub fn encode_base58(s: &[u8]) -> String {
         result.push(ch as char);
     }
     prefix + (&result.chars().rev().collect::<String>()[..])
+}
+
+pub fn hash256(b: &[u8]) -> Vec<u8>{
+    Sha256::digest(Sha256::digest(b)).to_vec()
+}
+
+pub fn encode_base58_checksum(b: &[u8]) -> String {
+    let h = &hash256(b)[0..4];
+    encode_base58(&[b, h].concat())
+}
+
+pub fn hash160(s: &[u8]) -> Vec<u8> {
+    Ripemd160::digest(Sha256::digest(s)).to_vec()
 }
 
 #[cfg(test)]

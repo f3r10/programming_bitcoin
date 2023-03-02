@@ -131,7 +131,7 @@ impl S256Point {
         }
     }
 
-    pub fn sec(self, compressed: Option<bool>) -> String {
+    pub fn sec(self, compressed: Option<bool>) -> Vec<u8> {
         match self.point {
             PointWrapper::Inf => panic!("Public point can not be point to infinity"),
             PointWrapper::Point { x, y, a: _, b: _ } => {
@@ -139,11 +139,11 @@ impl S256Point {
                     if y.num.modpow(&BigInt::from(1), &BigInt::from(2)) == BigInt::from(0) {
                         let marker = &b"\x02"[0..1];
                         let x = &x.num.to_bytes_be().1.to_vec()[0..32];
-                        hex::encode(&([marker, x].concat()))
+                        [marker, x].concat()
                     } else {
                         let marker = &b"\x03"[0..1];
                         let x = &x.num.to_bytes_be().1.to_vec()[0..32];
-                        hex::encode(&([marker, x].concat()))
+                        [marker, x].concat()
                     }
                 } else {
                     let marker = &b"\x04"[0..1];
@@ -151,9 +151,27 @@ impl S256Point {
                     let y = &y.num.to_bytes_be().1.to_vec()[0..32];
                     let res = [marker, x, y];
                     let res = res.concat();
-                    hex::encode(&res)
+                    res
                 }
             }
+        }
+    }
+
+    pub fn hash160(self, compressed: Option<bool>) -> Vec<u8> {
+        let a = self.sec(compressed);
+        utils::hash160(&a)
+    }
+
+    pub fn address(self, compressed: Option<bool>, testnet: Option<bool>) -> String {
+        let h160 = self.hash160(compressed);
+        if testnet.unwrap_or(false) {
+            let prefix = &b"\x6f"[0..1];
+            let ad = &[prefix, &h160].concat()[..];
+            utils::encode_base58_checksum(ad)
+        } else {
+            let prefix = &b"\x00"[0..1];
+            let ad = &[prefix, &h160].concat()[..];
+            utils::encode_base58_checksum(ad)
         }
     }
 }
@@ -257,27 +275,27 @@ mod secp256k1_tests {
 
     #[test]
     fn test_256point_uncompressed_sec() {
-        assert_eq!(PrivateKey::new(BigInt::from(5000)).point.sec(Some(false)), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
-        assert_eq!(PrivateKey::new(BigInt::from(2018).pow(5)).point.sec(Some(false)), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
-        assert_eq!(PrivateKey::new(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap()).point.sec(Some(false)), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
+        assert_eq!(hex::encode(PrivateKey::new(BigInt::from(5000)).point.sec(Some(false))), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
+        assert_eq!(hex::encode(PrivateKey::new(BigInt::from(2018).pow(5)).point.sec(Some(false))), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
+        assert_eq!(hex::encode(PrivateKey::new(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap()).point.sec(Some(false))), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
     }
 
     #[test]
     fn test_256point_compressed_sec() {
         assert_eq!(
-            PrivateKey::new(BigInt::from(5001)).point.sec(Some(true)),
+            hex::encode(PrivateKey::new(BigInt::from(5001)).point.sec(Some(true))),
             "0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1"
         );
         assert_eq!(
             PrivateKey::new(BigInt::from(2019).pow(5))
                 .point
                 .sec(Some(true)),
-            "02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701"
+            hex!("02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701")
         );
         assert_eq!(
-            PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
+            hex::encode(PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
                 .point
-                .sec(Some(true)),
+                .sec(Some(true))),
             "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690"
         );
     }
@@ -294,6 +312,26 @@ mod secp256k1_tests {
         assert_eq!(
             PrivateKey::new(BigInt::from(5001)).point.point,
             S256Point::parse(&p_compressed_bytes).point
+        );
+    }
+
+    #[test]
+    fn test_256point_address() {
+        assert_eq!(
+            PrivateKey::new(BigInt::from(5002)).point.address(Some(false), Some(true)),
+            "mmTPbXQFxboEtNRkwfh6K51jvdtHLxGeMA"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::from(2020).pow(5))
+                .point
+                .address(Some(true), Some(true)),
+            "mopVkxp8UhXqRYbCYJsbeE1h1fiF64jcoH"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::parse_bytes(b"12345deadbeef", 16).unwrap())
+                .point
+                .address(Some(true), Some(false)),
+            "1F1Pn2y6pDb68E5nYJJeba4TLg2U7B6KF1"
         );
     }
 }

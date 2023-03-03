@@ -127,7 +127,7 @@ impl Mul<S256Point> for BigInt {
 }
 
 #[cfg(test)]
-mod secp256k1_tests {
+mod secp256k1_point_tests {
 
     use hex_literal::hex;
     use num_bigint::BigInt;

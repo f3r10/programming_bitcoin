@@ -11,7 +11,9 @@ const BASE58_ALPHABET: &'static [u8] =
 pub fn encode_base58(s: &[u8]) -> String {
     let leading_zeros = s
         .iter()
-        .fold(0, |acc, x| if x == &0 { acc + 1 } else { acc });
+        .take_while(|x| **x ==0)
+        .count();
+        // .fold(0, |acc, x| if x == &0 { acc + 1 } else { acc });
     let mut num = BigInt::from_bytes_be(num_bigint::Sign::Plus, s);
     let mut result = String::new();
     let mut prefix = String::new();

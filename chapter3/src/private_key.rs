@@ -1,6 +1,6 @@
 use num_bigint::{BigInt, RandBigInt};
 
-use crate::{signature::Signature, PointWrapper, S256Point, G, N};
+use crate::{signature::Signature, PointWrapper, S256Point, G, N, utils};
 
 #[derive(Debug)]
 pub struct PrivateKey {
@@ -41,5 +41,55 @@ impl PrivateKey {
             s = N.to_owned() - s
         }
         Signature::new(r, s)
+    }
+
+    pub fn wif(self, compressed:Option<bool>, testnet:Option<bool>) -> String {
+        let secret_bytes = self.secret.to_bytes_be().1.to_vec();
+        let len = secret_bytes.len();
+        let to_fill = 32 - len;
+        let z = vec![0x0; to_fill]; // Vec::with_capacity(to_fill);
+        let final_bytes = &[z, secret_bytes].concat()[0..32];
+        let prefix: &[u8];
+        let suffix: &[u8];
+        if testnet.unwrap_or(false) {
+            prefix = b"\xef";
+        } else {
+            prefix = b"\x80";
+        }
+        if compressed.unwrap_or(true) {
+            suffix = b"\x01";
+        } else {
+            suffix = b"";
+        }
+        let ad = [prefix, final_bytes, suffix].concat();
+        utils::encode_base58_checksum(&ad)
+    }
+}
+
+
+#[cfg(test)]
+mod secp256k1_private_key_tests {
+    use num_bigint::BigInt;
+
+    use crate::private_key::PrivateKey;
+
+
+    #[test]
+    fn s256_private_key_wif() {
+        assert_eq!(
+            PrivateKey::new(BigInt::from(5003))
+                .wif(Some(true), Some(true)),
+            "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN8rFTv2sfUK"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::from(2021).pow(5))
+                .wif(Some(false), Some(true)),
+            "91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjpWAxgzczjbCwxic"
+        );
+        assert_eq!(
+            PrivateKey::new(BigInt::parse_bytes(b"54321deadbeef", 16).unwrap())
+                .wif(Some(true), Some(false)),
+            "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgiuQJv1h8Ytr2S53a"
+        );
     }
 }

@@ -166,6 +166,7 @@ fn main() {
     let parsed = S256Point::parse(&p_bytes);
     println!("before: {:?}", p.point);
     println!("parsed: {:?}", parsed);
+    // example tx https://live.blockcypher.com/btc-testnet/address/mzzLk9MmXzmjCBLgjoeNDxrbdrt511t5Gm/
     let passphrase = "f3r10@programmingblockchain.com my secret";
     let secret = utils::little_endian_to_int(&utils::hash256(passphrase.as_bytes()));
     let priva = PrivateKey::new(secret);

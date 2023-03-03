@@ -1,6 +1,6 @@
 use chapter3::{
     finite_field::FiniteField, private_key::PrivateKey, s256_field::S256Field,
-    s256_point::S256Point, PointWrapper, G, N,
+    s256_point::S256Point, PointWrapper, G, N, utils,
 };
 use num_bigint::BigInt;
 
@@ -166,6 +166,10 @@ fn main() {
     let parsed = S256Point::parse(&p_bytes);
     println!("before: {:?}", p.point);
     println!("parsed: {:?}", parsed);
+    let passphrase = "f3r10@programmingblockchain.com my secret";
+    let secret = utils::little_endian_to_int(&utils::hash256(passphrase.as_bytes()));
+    let priva = PrivateKey::new(secret);
+    println!("{}", priva.point.address(Some(true), Some(true)))
 }
 
 // y^2 = x^3 + y

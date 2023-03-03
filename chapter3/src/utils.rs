@@ -49,6 +49,14 @@ pub fn hash160(s: &[u8]) -> Vec<u8> {
     Ripemd160::digest(Sha256::digest(s)).to_vec()
 }
 
+pub fn little_endian_to_int(s: &[u8]) -> BigInt {
+    BigInt::from_signed_bytes_le(s)
+}
+
+pub fn int_to_little_endian(s: BigInt) -> Vec<u8> {
+    s.to_signed_bytes_le()
+}
+
 #[cfg(test)]
 mod utils_tests {
     use super::encode_base58;

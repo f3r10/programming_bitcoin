@@ -11,6 +11,7 @@ pub mod s256_field;
 pub mod s256_point;
 pub mod signature;
 pub mod utils;
+pub mod tx;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

@@ -1,7 +1,7 @@
 use core::panic;
 use std::{io::Read, vec};
 
-use num_bigint::BigInt;
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
 use crate::utils;
 
@@ -22,15 +22,13 @@ impl Script {
         let length = utils::read_varint(stream);
         let mut cmds: Vec<Vec<u8>> = Vec::new();
         let mut count = 0_u32;
-        while count < length.to_u32_digits().1.pop().unwrap_or(0) {
+        let length_buf = length.to_signed_bytes_be();
+        let length = BigEndian::read_int(&length_buf, length_buf.len()) as u32;
+        while count < length {
             let mut op_buffer = vec![0; 1];
             stream.read_exact(&mut op_buffer).unwrap();
             count += 1;
-            let current_byte = BigInt::from_signed_bytes_be(&op_buffer)
-                .to_u32_digits()
-                .1
-                .pop()
-                .unwrap();
+            let current_byte = BigEndian::read_int(&op_buffer, 1) as u32;
             if current_byte >= 1 && current_byte <= 75 {
                 let mut temp = vec![0; current_byte.try_into().unwrap()];
                 stream.read_exact(&mut temp).unwrap();
@@ -39,24 +37,24 @@ impl Script {
             } else if current_byte == 76 {
                 let mut temp = vec![0; 1];
                 stream.read_exact(&mut temp).unwrap();
-                let data_length = utils::little_endian_to_int(&temp);
-                let mut temp = vec![0; data_length.clone().try_into().unwrap()];
+                let data_length = LittleEndian::read_int(&temp, temp.len()) as u32;
+                let mut temp = vec![0; data_length.try_into().unwrap()];
                 stream.read_exact(&mut temp).unwrap();
                 cmds.push(temp);
-                count += data_length.to_u32_digits().1.pop().unwrap() + 1;
+                count += data_length + 1;
             } else if current_byte == 77 {
                 let mut temp = vec![0; 2];
                 stream.read_exact(&mut temp).unwrap();
-                let data_length = utils::little_endian_to_int(&temp);
+                let data_length = LittleEndian::read_int(&temp, temp.len()) as u32;
                 let mut temp = vec![0; data_length.clone().try_into().unwrap()];
                 stream.read_exact(&mut temp).unwrap();
                 cmds.push(temp);
-                count += data_length.to_u32_digits().1.pop().unwrap() + 2;
+                count += data_length + 2;
             } else {
                 cmds.push(op_buffer);
             }
         }
-        if count != length.to_u32_digits().1.pop().unwrap() {
+        if count != length {
             panic!("parsing script failed")
         }
 

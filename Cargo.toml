@@ -1,5 +1,5 @@
 [package]
-name = "chapter3"
+name = "bitcoin_clone"
 version = "0.1.0"
 edition = "2021"
 

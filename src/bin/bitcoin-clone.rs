@@ -1,4 +1,4 @@
-use chapter3::{
+use bitcoin_clone::{
     finite_field::FiniteField, private_key::PrivateKey, s256_field::S256Field,
     s256_point::S256Point, utils, PointWrapper, G, N,
 };

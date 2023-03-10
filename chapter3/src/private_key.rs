@@ -1,6 +1,6 @@
 use num_bigint::{BigInt, RandBigInt};
 
-use crate::{signature::Signature, PointWrapper, S256Point, G, N, utils};
+use crate::{signature::Signature, utils, PointWrapper, S256Point, G, N};
 
 #[derive(Debug)]
 pub struct PrivateKey {
@@ -43,7 +43,7 @@ impl PrivateKey {
         Signature::new(r, s)
     }
 
-    pub fn wif(self, compressed:Option<bool>, testnet:Option<bool>) -> String {
+    pub fn wif(self, compressed: Option<bool>, testnet: Option<bool>) -> String {
         let secret_bytes = self.secret.to_bytes_be().1.to_vec();
         let len = secret_bytes.len();
         let to_fill = 32 - len;
@@ -66,24 +66,20 @@ impl PrivateKey {
     }
 }
 
-
 #[cfg(test)]
 mod secp256k1_private_key_tests {
     use num_bigint::BigInt;
 
     use crate::private_key::PrivateKey;
 
-
     #[test]
     fn s256_private_key_wif() {
         assert_eq!(
-            PrivateKey::new(BigInt::from(5003))
-                .wif(Some(true), Some(true)),
+            PrivateKey::new(BigInt::from(5003)).wif(Some(true), Some(true)),
             "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN8rFTv2sfUK"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::from(2021).pow(5))
-                .wif(Some(false), Some(true)),
+            PrivateKey::new(BigInt::from(2021).pow(5)).wif(Some(false), Some(true)),
             "91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjpWAxgzczjbCwxic"
         );
         assert_eq!(

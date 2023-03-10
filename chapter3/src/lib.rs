@@ -9,11 +9,11 @@ pub mod private_key;
 pub mod real_numbers_point;
 pub mod s256_field;
 pub mod s256_point;
-pub mod signature;
-pub mod utils;
-pub mod tx;
 pub mod script;
+pub mod signature;
+pub mod tx;
 pub mod tx_fetcher;
+pub mod utils;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

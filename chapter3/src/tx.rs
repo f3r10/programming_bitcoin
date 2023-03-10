@@ -2,11 +2,7 @@ use std::{fmt::Display, io::Read};
 
 use num_bigint::BigInt;
 
-use crate::{
-    script::Script,
-    tx_fetcher::TxFetcher,
-    utils,
-};
+use crate::{script::Script, tx_fetcher::TxFetcher, utils};
 
 #[derive(Debug, Clone)]
 pub struct TxOut {

@@ -134,7 +134,8 @@ mod secp256k1_point_tests {
     use sha2::{Digest, Sha256};
 
     use crate::{
-        private_key::PrivateKey, signature::Signature, PointWrapper, S256Field, S256Point, G, N, utils,
+        private_key::PrivateKey, signature::Signature, utils, PointWrapper, S256Field, S256Point,
+        G, N,
     };
 
     #[test]
@@ -276,6 +277,9 @@ mod secp256k1_point_tests {
         let passphrase = "jimmy@programmingblockchain.com my secret";
         let secret = utils::little_endian_to_int(&utils::hash256(passphrase.as_bytes()));
         let priva = PrivateKey::new(secret);
-        assert_eq!("mft9LRNtaBNtpkknB8xgm17UvPedZ4ecYL", priva.point.address(Some(true), Some(true)))
+        assert_eq!(
+            "mft9LRNtaBNtpkknB8xgm17UvPedZ4ecYL",
+            priva.point.address(Some(true), Some(true))
+        )
     }
 }

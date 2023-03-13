@@ -69,6 +69,22 @@ pub fn usize_to_little_endian(s: usize, limit: u64) -> Vec<u8> {
     buffer.to_vec()
 }
 
+pub fn u32_to_little_endian(s: u32, limit: u64) -> Vec<u8> {
+    let i = s.to_le_bytes();
+    let mut buffer = vec![0; limit.try_into().unwrap()];
+    let mut handle = i.take(limit);
+    handle.read(&mut buffer).unwrap();
+    buffer.to_vec()
+}
+
+pub fn i32_to_little_endian(s: i32, limit: u64) -> Vec<u8> {
+    let i = s.to_le_bytes();
+    let mut buffer = vec![0; limit.try_into().unwrap()];
+    let mut handle = i.take(limit);
+    handle.read(&mut buffer).unwrap();
+    buffer.to_vec()
+}
+
 pub fn read_varint<R: Read>(stream: &mut R) -> BigInt {
     let mut buffer = [0; 1];
     stream.read_exact(&mut buffer).unwrap();

@@ -52,13 +52,13 @@ impl Tx {
         handle.read(&mut buffer).unwrap(); // .read_u32::<LittleEndian>().unwrap(); //.read(&mut buffer).unwrap();
         let version = utils::little_endian_to_int(&buffer);
         let num_inputs_buf = utils::read_varint(stream).to_signed_bytes_be();
-        let num_inputs = BigEndian::read_uint(&num_inputs_buf, num_inputs_buf.len()) ;
+        let num_inputs = BigEndian::read_uint(&num_inputs_buf, num_inputs_buf.len());
         let mut inputs: Vec<TxIn> = Vec::new();
         for _ in 0..num_inputs {
             inputs.push(TxIn::parse(stream))
         }
         let num_outputs_buf = utils::read_varint(stream).to_signed_bytes_be();
-        let num_outputs = BigEndian::read_uint(&num_outputs_buf, num_outputs_buf.len()) ;
+        let num_outputs = BigEndian::read_uint(&num_outputs_buf, num_outputs_buf.len());
         let mut outputs: Vec<TxOut> = Vec::new();
         for _ in 0..num_outputs {
             outputs.push(TxOut::parse(stream))

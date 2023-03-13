@@ -1,3 +1,4 @@
+#![feature(seek_stream_len)]
 use num_bigint::BigInt;
 use once_cell::sync::Lazy;
 use s256_field::S256Field;
@@ -5,6 +6,7 @@ use s256_point::S256Point;
 
 pub mod finite_field;
 pub mod finite_field_point;
+pub mod op;
 pub mod private_key;
 pub mod real_numbers_point;
 pub mod s256_field;

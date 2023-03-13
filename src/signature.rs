@@ -1,5 +1,9 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    io::{Read, Seek},
+};
 
+use byteorder::{BigEndian, ByteOrder};
 use num_bigint::BigInt;
 
 pub struct Signature {
@@ -9,6 +13,45 @@ pub struct Signature {
 
 impl Signature {
     pub fn new(r: BigInt, s: BigInt) -> Self {
+        Signature { r, s }
+    }
+
+    pub fn parse<R: Read + Seek>(stream: &mut R) -> Self {
+        let mut compound_buffer = [0; 1];
+        stream.read_exact(&mut compound_buffer).unwrap();
+        let compound = compound_buffer[0];
+        if compound != 0x30 {
+            panic!("Bad signature")
+        }
+        let mut length_buffer = [0; 1];
+        stream.read_exact(&mut length_buffer).unwrap();
+        let length = (BigEndian::read_u32(&[0, 0, 0, length_buffer[0]]) + 2) as u64;
+        let len = stream.stream_len().unwrap();
+        if length != len {
+            panic!("Bad signature length")
+        }
+        let mut marker_buffer = [0; 1];
+        stream.read_exact(&mut marker_buffer).unwrap();
+        if marker_buffer[0] != 0x02 {
+            panic!("Bad signature")
+        }
+        let mut rlength_buffer = [0; 1];
+        stream.read_exact(&mut rlength_buffer).unwrap();
+        let rlenght = BigEndian::read_u32(&[0, 0, 0, rlength_buffer[0]]);
+        let mut r_buffer = vec![0; rlenght.try_into().unwrap()];
+        stream.read_exact(&mut r_buffer).unwrap();
+        let r = BigInt::from_signed_bytes_be(&r_buffer);
+        let mut marker_buffer = [0; 1];
+        stream.read_exact(&mut marker_buffer).unwrap();
+        if marker_buffer[0] != 0x02 {
+            panic!("Bad signature")
+        }
+        let mut slength_buffer = [0; 1];
+        stream.read_exact(&mut slength_buffer).unwrap();
+        let slenght = BigEndian::read_u32(&[0, 0, 0, slength_buffer[0]]);
+        let mut s_buffer = vec![0; slenght.try_into().unwrap()];
+        stream.read_exact(&mut s_buffer).unwrap();
+        let s = BigInt::from_signed_bytes_be(&s_buffer);
         Signature { r, s }
     }
 
@@ -59,6 +102,8 @@ impl Display for Signature {
 
 #[cfg(test)]
 mod signature_tests {
+    use std::io::Cursor;
+
     use num_bigint::BigInt;
 
     use super::Signature;
@@ -78,5 +123,25 @@ mod signature_tests {
         .unwrap();
         let sig = Signature::new(r, s);
         assert_eq!(hex::encode(sig.der()), "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec")
+    }
+
+    #[test]
+    fn test_parse_signature() {
+        let r: BigInt = BigInt::parse_bytes(
+            b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6",
+            16,
+        )
+        .unwrap();
+        let s: BigInt = BigInt::parse_bytes(
+            b"8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec",
+            16,
+        )
+        .unwrap();
+        let sig = "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
+        let sig_encode = hex::decode(sig).unwrap();
+        let mut cursor_sig = Cursor::new(sig_encode);
+        let sig_parsed = Signature::parse(&mut cursor_sig);
+        assert_eq!(sig_parsed.r, r);
+        assert_eq!(sig_parsed.s, s);
     }
 }

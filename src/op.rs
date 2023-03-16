@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use byteorder::{BigEndian, ByteOrder};
+use crypto::{digest::Digest, sha1::Sha1};
 use num_bigint::BigInt;
 
 use crate::{s256_point::S256Point, script::Command, signature::Signature, utils};
@@ -14,6 +15,49 @@ pub enum OpCodeFunctions {
     OpHash256(u32),
     OpEqualverify(u32),
     OpEqual(u32),
+    OpVerify(u32),
+    Op6(u32),
+    OpAdd(u32),
+    OpMul(u32),
+    Op2(u32),
+    Op2dup(u32),
+    OpSwap(u32),
+    OpNot(u32),
+    OpSha1(u32),
+}
+
+impl OpCodeFunctions {
+    pub fn op0() -> Self {
+        OpCodeFunctions::Op0(0)
+    }
+
+    pub fn op_checksig() -> Self {
+        OpCodeFunctions::OpChecksig(172)
+    }
+
+    pub fn op_dup() -> Self {
+        OpCodeFunctions::OpDup(118)
+    }
+
+    pub fn op_hash160() -> Self {
+        OpCodeFunctions::OpHash160(169)
+    }
+
+    pub fn op_hash256() -> Self {
+        OpCodeFunctions::OpHash256(170)
+    }
+
+    pub fn op_equalverify() -> Self {
+        OpCodeFunctions::OpEqualverify(136)
+    }
+
+    pub fn op_equal() -> Self {
+        OpCodeFunctions::OpEqual(135)
+    }
+
+    pub fn op_verify() -> Self {
+        OpCodeFunctions::OpVerify(105)
+    }
 }
 
 impl AsRef<u32> for OpCodeFunctions {
@@ -26,11 +70,20 @@ impl AsRef<u32> for OpCodeFunctions {
             OpCodeFunctions::OpEqualverify(op) => op,
             OpCodeFunctions::OpEqual(op) => op,
             OpCodeFunctions::OpHash256(op) => op,
+            OpCodeFunctions::OpVerify(op) => op,
+            OpCodeFunctions::Op6(op) => op,
+            OpCodeFunctions::OpAdd(op) => op,
+            OpCodeFunctions::OpMul(op) => op,
+            OpCodeFunctions::Op2(op) => op,
+            OpCodeFunctions::Op2dup(op) => op,
+            OpCodeFunctions::OpSwap(op) => op,
+            OpCodeFunctions::OpNot(op) => op,
+            OpCodeFunctions::OpSha1(op) => op,
         }
     }
 }
 
-pub fn parse_op_codes(op_code: u32) -> OpCodeFunctions {
+pub fn parse_raw_op_codes(op_code: u32) -> OpCodeFunctions {
     match op_code {
         0 => OpCodeFunctions::Op0(op_code),
         172 => OpCodeFunctions::OpChecksig(op_code),
@@ -39,6 +92,15 @@ pub fn parse_op_codes(op_code: u32) -> OpCodeFunctions {
         136 => OpCodeFunctions::OpEqualverify(op_code),
         135 => OpCodeFunctions::OpEqual(op_code),
         170 => OpCodeFunctions::OpHash256(op_code),
+        105 => OpCodeFunctions::OpVerify(op_code),
+        86 => OpCodeFunctions::Op6(86),
+        147 => OpCodeFunctions::OpAdd(147),
+        149 => OpCodeFunctions::OpMul(149),
+        0x52 => OpCodeFunctions::Op2(2),
+        0x6e => OpCodeFunctions::Op2dup(0x6e),
+        0x7c => OpCodeFunctions::OpSwap(0x7c),
+        0x91 => OpCodeFunctions::OpNot(0x91),
+        0xa7 => OpCodeFunctions::OpSha1(0xa7),
         unknow => panic!("unknown opCode: {}", unknow),
     }
 }
@@ -46,9 +108,9 @@ pub fn parse_op_codes(op_code: u32) -> OpCodeFunctions {
 pub fn operation(
     op_code: OpCodeFunctions,
     stack: &mut Vec<Vec<u8>>,
-    _cmds: &mut Vec<Command>,
-    _altstack: &mut Vec<Vec<u8>>,
-    z: BigInt,
+    cmds: &mut Vec<Command>,
+    altstack: &mut Vec<Vec<u8>>,
+    z: &BigInt,
 ) -> bool {
     match op_code {
         OpCodeFunctions::Op0(_) => {
@@ -74,29 +136,118 @@ pub fn operation(
         }
         OpCodeFunctions::OpDup(_) => {
             if stack.len() < 1 {
-                return false
-            } 
+                return false;
+            }
             stack.push(stack.last().unwrap().to_vec());
             true
-        },
+        }
         OpCodeFunctions::OpHash160(_) => {
             if stack.len() < 1 {
-                return false
+                return false;
             }
             let element = stack.pop().unwrap();
             stack.push(utils::hash160(&element));
-            return true
-        },
-        OpCodeFunctions::OpEqualverify(_) => todo!(),
-        OpCodeFunctions::OpEqual(_) => todo!(),
+            return true;
+        }
+        OpCodeFunctions::OpEqualverify(_) => {
+            operation(OpCodeFunctions::op_equal(), stack, cmds, altstack, z)
+                && operation(OpCodeFunctions::op_verify(), stack, cmds, altstack, z)
+        }
+        OpCodeFunctions::OpEqual(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            let element1 = stack.pop().unwrap();
+            let element2 = stack.pop().unwrap();
+            if element1 == element2 {
+                stack.push(encode_num(1))
+            } else {
+                stack.push(encode_num(0))
+            }
+            return true;
+        }
         OpCodeFunctions::OpHash256(_) => {
             if stack.len() < 1 {
-                return false
+                return false;
             }
             let element = stack.pop().unwrap();
             stack.push(utils::hash256(&element));
-            return true
-        },
+            return true;
+        }
+        OpCodeFunctions::OpVerify(_) => {
+            if stack.len() < 1 {
+                return false;
+            }
+            let element = stack.pop().unwrap();
+            if decode_num(element) == 0 {
+                return false;
+            }
+            return true;
+        }
+        OpCodeFunctions::Op6(_) => {
+            stack.push(encode_num(6));
+            true
+        }
+        OpCodeFunctions::OpAdd(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            let element1 = decode_num(stack.pop().unwrap());
+            let element2 = decode_num(stack.pop().unwrap()); //BigEndian::read_i32(&[0, 0, 0, stack.pop().unwrap()[0]]);
+            stack.push(encode_num(element1 + element2));
+            return true;
+        }
+        OpCodeFunctions::OpMul(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            let element1 = decode_num(stack.pop().unwrap());
+            let element2 = decode_num(stack.pop().unwrap()); //BigEndian::read_i32(&[0, 0, 0, stack.pop().unwrap()[0]]);
+            stack.push(encode_num(element1 * element2));
+            return true;
+        }
+        OpCodeFunctions::Op2(_) => {
+            stack.push(encode_num(2));
+            true
+        }
+        OpCodeFunctions::Op2dup(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            stack.append(&mut stack[stack.len() - 2..].to_vec());
+            return true;
+        }
+        OpCodeFunctions::OpSwap(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            let len = stack.len();
+            stack.swap(len - 1, len - 2);
+            return true;
+        }
+        OpCodeFunctions::OpNot(_) => {
+            if stack.len() < 2 {
+                return false;
+            }
+            if decode_num(stack.pop().unwrap()) == 0 {
+                stack.push(encode_num(1))
+            } else {
+                stack.push(encode_num(0))
+            }
+            return true;
+        }
+        OpCodeFunctions::OpSha1(_) => {
+            if stack.len() < 1 {
+                return false;
+            }
+            let mut out = [0u8; 20];
+            let element = stack.pop().unwrap();
+            let mut hasher = Sha1::new();
+            hasher.input(element.as_slice());
+            hasher.result(&mut out);
+            stack.push(out.to_vec());
+            return true;
+        }
     }
 }
 

@@ -1,6 +1,11 @@
 use bitcoin_clone::{
-    finite_field::FiniteField, private_key::PrivateKey, s256_field::S256Field,
-    s256_point::S256Point, utils, PointWrapper, G, N,
+    finite_field::FiniteField,
+    op,
+    private_key::PrivateKey,
+    s256_field::S256Field,
+    s256_point::S256Point,
+    script::{Command, Script},
+    utils, PointWrapper, G, N,
 };
 use num_bigint::BigInt;
 
@@ -170,7 +175,38 @@ fn main() {
     let passphrase = "f3r10@programmingblockchain.com my secret";
     let secret = utils::little_endian_to_int(&utils::hash256(passphrase.as_bytes()));
     let priva = PrivateKey::new(secret);
-    println!("{}", priva.point.address(Some(true), Some(true)))
+    println!("{}", priva.point.address(Some(true), Some(true)));
+
+    let script_pub_key = Script::new(Some(vec![
+        Command::Operation(op::parse_raw_op_codes(0x76)),
+        Command::Operation(op::parse_raw_op_codes(0x76)),
+        Command::Operation(op::parse_raw_op_codes(0x95)),
+        Command::Operation(op::parse_raw_op_codes(0x93)),
+        Command::Operation(op::parse_raw_op_codes(0x56)),
+        Command::Operation(op::parse_raw_op_codes(0x87)),
+    ]));
+
+    let script_sig = Script::new(Some(vec![Command::Operation(op::parse_raw_op_codes(0x52))]));
+    let combined_script = script_sig + script_pub_key;
+    println!("eval script: {}", combined_script.evaluate(BigInt::from(0)));
+    println!("=====exercise chapter6:4=======");
+    let script_pub_key = Script::new(Some(vec![
+        Command::Operation(op::parse_raw_op_codes(0x6e)),
+        Command::Operation(op::parse_raw_op_codes(0x87)),
+        Command::Operation(op::parse_raw_op_codes(0x91)),
+        Command::Operation(op::parse_raw_op_codes(0x69)),
+        Command::Operation(op::parse_raw_op_codes(0xa7)),
+        Command::Operation(op::parse_raw_op_codes(0x7c)),
+        Command::Operation(op::parse_raw_op_codes(0xa7)),
+        Command::Operation(op::parse_raw_op_codes(0x87)),
+    ]));
+    let script_sig = Script::new(Some(vec![
+        Command::Element("this is sentence a".as_bytes().to_vec()),
+        Command::Element("this is sentence b".as_bytes().to_vec()),
+    ]));
+    let combined_script = script_sig + script_pub_key;
+    println!("checking collision: {}", combined_script.evaluate(BigInt::from(0)));
+
 }
 
 // y^2 = x^3 + y

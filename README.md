@@ -53,3 +53,4 @@ cargo test
 ```
 ### TODOs
 - [ ] implement deterministic_k
+- [ ] using this simple ervice for checking the fee: https://blockstream.info/api/tx/d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81/hex

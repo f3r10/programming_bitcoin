@@ -66,7 +66,7 @@ impl Script {
             } else {
                 let mut num = vec![0, 0, 0];
                 num.append(&mut current.clone());
-                let op_code = op::parse_op_codes(BigEndian::read_u32(&num));
+                let op_code = op::parse_raw_op_codes(BigEndian::read_u32(&num));
                 let op = Command::Operation(op_code);
                 cmds.push(op);
             }
@@ -92,7 +92,7 @@ impl Script {
                         &mut stack,
                         &mut cmds_copy,
                         &mut altstack,
-                        z.clone(),
+                        &z,
                     );
                     if !result {
                         panic!("bad op")
@@ -194,7 +194,7 @@ mod script_tests {
         let sig_encode = hex::decode(sig).unwrap();
         let cmd = vec![
             Command::Element(sec_encode),
-            Command::Operation(op::parse_op_codes(0xac)),
+            Command::Operation(op::parse_raw_op_codes(0xac)),
         ];
         let script_pubkey = Script::new(Some(cmd));
         let script_sig = Script::new(Some(vec![Command::Element(sig_encode)]));

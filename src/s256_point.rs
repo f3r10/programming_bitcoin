@@ -55,7 +55,7 @@ impl S256Point {
         }
     }
 
-    pub fn verify(self, z: BigInt, sig: Signature) -> bool {
+    pub fn verify(self, z: &BigInt, sig: Signature) -> bool {
         let n_2: BigInt = N.to_owned() - 2;
         let s_inv = sig.s.modpow(&n_2, &N);
         let u = (z * s_inv.clone()).modpow(&BigInt::from(1), &N);
@@ -172,7 +172,7 @@ mod secp256k1_point_tests {
         .unwrap();
         let point = S256Point::new(S256Field::new(px), S256Field::new(py));
         let sig = Signature::new(r, s);
-        assert!(point.verify(z, sig))
+        assert!(point.verify(&z, sig))
     }
     //TODO Add a negative point verification
 
@@ -207,7 +207,7 @@ mod secp256k1_point_tests {
             sig.s.to_bytes_be().1,
             hex!("1dbc63bfef4416705e602a7b564161167076d8b20990a0f26f316cff2cb0bc1a")
         );
-        assert!(p.point.clone().verify(z, sig))
+        assert!(p.point.clone().verify(&z, sig))
     }
 
     #[test]

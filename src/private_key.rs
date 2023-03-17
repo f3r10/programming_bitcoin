@@ -1,6 +1,9 @@
 use num_bigint::{BigInt, RandBigInt};
 
-use crate::{signature::Signature, utils, PointWrapper, S256Point, G, N};
+use crate::{
+    signature::{Signature, SignatureHash},
+    utils, PointWrapper, S256Point, G, N,
+};
 
 #[derive(Debug)]
 pub struct PrivateKey {
@@ -8,25 +11,36 @@ pub struct PrivateKey {
     pub point: S256Point,
 }
 
+pub struct PrivateKeySecret(BigInt);
+
+impl AsRef<BigInt> for PrivateKeySecret {
+    fn as_ref(&self) -> &BigInt {
+        &self.0
+    }
+}
+
 impl PrivateKey {
-    pub fn new(secret: BigInt) -> Self {
-        let point = secret.clone() * G.to_owned();
+    pub fn new(secret: &PrivateKeySecret) -> Self {
+        let point = secret.as_ref() * &G.to_owned();
         let point = S256Point { point };
-        PrivateKey { secret, point }
+        PrivateKey {
+            secret: secret.as_ref().clone(),
+            point,
+        }
     }
 
     pub fn hex(self) -> String {
         format!("{:#064x}", self.secret)
     }
 
-    pub fn sign(&self, z: BigInt, ks: Option<BigInt>) -> Signature {
+    pub fn sign(&self, z: &SignatureHash, ks: Option<BigInt>) -> Signature {
         let mut rng = rand::thread_rng();
         //TODO DANGER this is just for now, it has to be changed later
         let k = match ks {
             Some(v) => v,
             None => rng.gen_bigint_range(&BigInt::from(0), &N),
         };
-        let r = match k.clone() * G.to_owned() {
+        let r = match k.clone() * &G.to_owned() {
             PointWrapper::Point {
                 x,
                 y: _,
@@ -36,7 +50,8 @@ impl PrivateKey {
             PointWrapper::Inf => panic!("R point should not be point to infity"),
         };
         let k_inv = k.modpow(&(N.to_owned() - 2), &N);
-        let mut s = ((z + r.clone() * self.secret.clone()) * k_inv).modpow(&BigInt::from(1), &N);
+        let mut s =
+            ((z.as_ref() + r.clone() * self.secret.clone()) * k_inv).modpow(&BigInt::from(1), &N);
         if s > N.to_owned() / 2 {
             s = N.to_owned() - s
         }
@@ -64,27 +79,40 @@ impl PrivateKey {
         let ad = [prefix, final_bytes, suffix].concat();
         utils::encode_base58_checksum(&ad)
     }
+
+    pub fn generate_secret(passphrase: &str) -> PrivateKeySecret {
+        PrivateKeySecret(utils::little_endian_to_int(&utils::hash256(
+            passphrase.as_bytes(),
+        )))
+    }
+
+    pub fn generate_simple_secret(num: BigInt) -> PrivateKeySecret {
+        PrivateKeySecret(num)
+    }
 }
 
 #[cfg(test)]
 mod secp256k1_private_key_tests {
     use num_bigint::BigInt;
 
-    use crate::private_key::PrivateKey;
+    use crate::private_key::{PrivateKey, PrivateKeySecret};
 
     #[test]
     fn s256_private_key_wif() {
         assert_eq!(
-            PrivateKey::new(BigInt::from(5003)).wif(Some(true), Some(true)),
+            PrivateKey::new(&PrivateKeySecret(BigInt::from(5003))).wif(Some(true), Some(true)),
             "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN8rFTv2sfUK"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::from(2021).pow(5)).wif(Some(false), Some(true)),
+            PrivateKey::new(&PrivateKeySecret(BigInt::from(2021).pow(5)))
+                .wif(Some(false), Some(true)),
             "91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjpWAxgzczjbCwxic"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::parse_bytes(b"54321deadbeef", 16).unwrap())
-                .wif(Some(true), Some(false)),
+            PrivateKey::new(&PrivateKeySecret(
+                BigInt::parse_bytes(b"54321deadbeef", 16).unwrap()
+            ))
+            .wif(Some(true), Some(false)),
             "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgiuQJv1h8Ytr2S53a"
         );
     }

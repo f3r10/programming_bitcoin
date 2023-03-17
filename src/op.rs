@@ -2,9 +2,13 @@ use std::io::Cursor;
 
 use byteorder::{BigEndian, ByteOrder};
 use crypto::{digest::Digest, sha1::Sha1};
-use num_bigint::BigInt;
 
-use crate::{s256_point::S256Point, script::Command, signature::Signature, utils};
+use crate::{
+    s256_point::S256Point,
+    script::Command,
+    signature::{Signature, SignatureHash},
+    utils,
+};
 
 #[derive(Debug, Clone)]
 pub enum OpCodeFunctions {
@@ -110,7 +114,7 @@ pub fn operation(
     stack: &mut Vec<Vec<u8>>,
     cmds: &mut Vec<Command>,
     altstack: &mut Vec<Vec<u8>>,
-    z: &BigInt,
+    z: &SignatureHash,
 ) -> bool {
     match op_code {
         OpCodeFunctions::Op0(_) => {

@@ -3,8 +3,10 @@ use std::ops::Mul;
 use num_bigint::BigInt;
 
 use crate::{
-    finite_field::FiniteField, s256_field::S256Field, signature::Signature, utils, PointWrapper, G,
-    N, P,
+    finite_field::FiniteField,
+    s256_field::S256Field,
+    signature::{Signature, SignatureHash},
+    utils, PointWrapper, G, N, P,
 };
 
 #[derive(Debug, Clone)]
@@ -55,12 +57,12 @@ impl S256Point {
         }
     }
 
-    pub fn verify(self, z: &BigInt, sig: Signature) -> bool {
+    pub fn verify(&self, z: &SignatureHash, sig: Signature) -> bool {
         let n_2: BigInt = N.to_owned() - 2;
         let s_inv = sig.s.modpow(&n_2, &N);
-        let u = (z * s_inv.clone()).modpow(&BigInt::from(1), &N);
+        let u = (z.as_ref() * s_inv.clone()).modpow(&BigInt::from(1), &N);
         let v = (sig.r.clone() * s_inv.clone()).modpow(&BigInt::from(1), &N);
-        let total = u * G.to_owned() + v * self;
+        let total = u * &G.to_owned() + v * self;
         match total {
             PointWrapper::Inf => false,
             PointWrapper::Point {
@@ -117,12 +119,21 @@ impl S256Point {
     }
 }
 
-impl Mul<S256Point> for BigInt {
+impl Mul<&S256Point> for BigInt {
     type Output = PointWrapper<FiniteField>;
 
-    fn mul(self, rhs: S256Point) -> Self::Output {
+    fn mul(self, rhs: &S256Point) -> Self::Output {
         let coef = self.modpow(&BigInt::from(1), &N);
-        coef * rhs.point
+        coef * rhs.point.clone()
+    }
+}
+
+impl Mul<&S256Point> for &BigInt {
+    type Output = PointWrapper<FiniteField>;
+
+    fn mul(self, rhs: &S256Point) -> Self::Output {
+        let coef = self.modpow(&BigInt::from(1), &N);
+        coef * rhs.point.clone()
     }
 }
 
@@ -131,11 +142,10 @@ mod secp256k1_point_tests {
 
     use hex_literal::hex;
     use num_bigint::BigInt;
-    use sha2::{Digest, Sha256};
 
     use crate::{
-        private_key::PrivateKey, signature::Signature, utils, PointWrapper, S256Field, S256Point,
-        G, N,
+        private_key::PrivateKey,
+        signature::Signature, PointWrapper, S256Field, S256Point, G, N,
     };
 
     #[test]
@@ -145,11 +155,9 @@ mod secp256k1_point_tests {
 
     #[test]
     fn point_verification_test() {
-        let z: BigInt = BigInt::parse_bytes(
-            b"bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423",
-            16,
-        )
-        .unwrap();
+        let z = Signature::signature_hash_from_hex(
+            "bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423",
+        );
         let r: BigInt = BigInt::parse_bytes(
             b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6",
             16,
@@ -178,15 +186,15 @@ mod secp256k1_point_tests {
 
     #[test]
     fn point_sing_test() {
-        let sha256_z = Sha256::digest(Sha256::digest(b"Programming Bitcoin!"));
-        let e = BigInt::from(12345);
-        let z = BigInt::from_bytes_be(num_bigint::Sign::Plus, &sha256_z);
-        let p = PrivateKey::new(e);
+        let passphrase = "Programming Bitcoin!";
+        let e = PrivateKey::generate_simple_secret(BigInt::from(12345));
+        let z = Signature::signature_hash(passphrase);
+        let p = PrivateKey::new(&e);
         let (public_x, public_y) = match p.point.clone().point {
             PointWrapper::Inf => panic!("public key should not be point to infinity"),
             PointWrapper::Point { x, y, a: _, b: _ } => (x, y),
         };
-        let sig = p.sign(z.clone(), Some(BigInt::from(1234567890)));
+        let sig = p.sign(&z, Some(BigInt::from(1234567890)));
         assert_eq!(
             public_x.num.to_bytes_be().1,
             hex!("f01d6b9018ab421dd410404cb869072065522bf85734008f105cf385a023a80f")
@@ -196,7 +204,7 @@ mod secp256k1_point_tests {
             hex!("0eba29d0f0c5408ed681984dc525982abefccd9f7ff01dd26da4999cf3f6a295")
         );
         assert_eq!(
-            z.to_bytes_be().1,
+            z.as_ref().to_bytes_be().1,
             hex!("969f6056aa26f7d2795fd013fe88868d09c9f6aed96965016e1936ae47060d48")
         );
         assert_eq!(
@@ -207,33 +215,41 @@ mod secp256k1_point_tests {
             sig.s.to_bytes_be().1,
             hex!("1dbc63bfef4416705e602a7b564161167076d8b20990a0f26f316cff2cb0bc1a")
         );
-        assert!(p.point.clone().verify(&z, sig))
+        assert!(p.point.verify(&z, sig))
     }
 
     #[test]
     fn test_256point_uncompressed_sec() {
-        assert_eq!(hex::encode(PrivateKey::new(BigInt::from(5000)).point.sec(Some(false))), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
-        assert_eq!(hex::encode(PrivateKey::new(BigInt::from(2018).pow(5)).point.sec(Some(false))), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
-        assert_eq!(hex::encode(PrivateKey::new(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap()).point.sec(Some(false))), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
+        assert_eq!(hex::encode(PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(5000))).point.sec(Some(false))), "04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
+        assert_eq!(hex::encode(PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(2018).pow(5))).point.sec(Some(false))), "04027f3da1918455e03c46f659266a1bb5204e959db7364d2f473bdf8f0a13cc9dff87647fd023c13b4a4994f17691895806e1b40b57f4fd22581a4f46851f3b06");
+        assert_eq!(hex::encode(PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::parse_bytes(b"deadbeef12345", 16).unwrap())).point.sec(Some(false))), "04d90cd625ee87dd38656dd95cf79f65f60f7273b67d3096e68bd81e4f5342691f842efa762fd59961d0e99803c61edba8b3e3f7dc3a341836f97733aebf987121");
     }
 
     #[test]
     fn test_256point_compressed_sec() {
         assert_eq!(
-            hex::encode(PrivateKey::new(BigInt::from(5001)).point.sec(Some(true))),
+            hex::encode(
+                PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(5001)))
+                    .point
+                    .sec(Some(true))
+            ),
             "0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::from(2019).pow(5))
-                .point
-                .sec(Some(true)),
+            PrivateKey::new(&PrivateKey::generate_simple_secret(
+                BigInt::from(2019).pow(5)
+            ))
+            .point
+            .sec(Some(true)),
             hex!("02933ec2d2b111b92737ec12f1c5d20f3233a0ad21cd8b36d0bca7a0cfa5cb8701")
         );
         assert_eq!(
             hex::encode(
-                PrivateKey::new(BigInt::parse_bytes(b"deadbeef54321", 16).unwrap())
-                    .point
-                    .sec(Some(true))
+                PrivateKey::new(&PrivateKey::generate_simple_secret(
+                    BigInt::parse_bytes(b"deadbeef54321", 16).unwrap()
+                ))
+                .point
+                .sec(Some(true))
             ),
             "0296be5b1292f6c856b3c5654e886fc13511462059089cdf9c479623bfcbe77690"
         );
@@ -243,13 +259,17 @@ mod secp256k1_point_tests {
     fn test_s256point_parse_point_sec_bytes() {
         let p_uncompressed_bytes = hex!("04ffe558e388852f0120e46af2d1b370f85854a8eb0841811ece0e3e03d282d57c315dc72890a4f10a1481c031b03b351b0dc79901ca18a00cf009dbdb157a1d10");
         assert_eq!(
-            PrivateKey::new(BigInt::from(5000)).point.point,
+            PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(5000)))
+                .point
+                .point,
             S256Point::parse(&p_uncompressed_bytes).point
         );
         let p_compressed_bytes =
             hex!("0357a4f368868a8a6d572991e484e664810ff14c05c0fa023275251151fe0e53d1");
         assert_eq!(
-            PrivateKey::new(BigInt::from(5001)).point.point,
+            PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(5001)))
+                .point
+                .point,
             S256Point::parse(&p_compressed_bytes).point
         );
     }
@@ -257,26 +277,29 @@ mod secp256k1_point_tests {
     #[test]
     fn test_256point_address() {
         assert_eq!(
-            PrivateKey::new(BigInt::from(5002))
+            PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(5002)))
                 .point
                 .address(Some(false), Some(true)),
             "mmTPbXQFxboEtNRkwfh6K51jvdtHLxGeMA"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::from(2020).pow(5))
-                .point
-                .address(Some(true), Some(true)),
+            PrivateKey::new(&PrivateKey::generate_simple_secret(
+                BigInt::from(2020).pow(5)
+            ))
+            .point
+            .address(Some(true), Some(true)),
             "mopVkxp8UhXqRYbCYJsbeE1h1fiF64jcoH"
         );
         assert_eq!(
-            PrivateKey::new(BigInt::parse_bytes(b"12345deadbeef", 16).unwrap())
-                .point
-                .address(Some(true), Some(false)),
+            PrivateKey::new(&PrivateKey::generate_simple_secret(
+                BigInt::parse_bytes(b"12345deadbeef", 16).unwrap()
+            ))
+            .point
+            .address(Some(true), Some(false)),
             "1F1Pn2y6pDb68E5nYJJeba4TLg2U7B6KF1"
         );
         let passphrase = "jimmy@programmingblockchain.com my secret";
-        let secret = utils::little_endian_to_int(&utils::hash256(passphrase.as_bytes()));
-        let priva = PrivateKey::new(secret);
+        let priva = PrivateKey::new(&PrivateKey::generate_secret(passphrase));
         assert_eq!(
             "mft9LRNtaBNtpkknB8xgm17UvPedZ4ecYL",
             priva.point.address(Some(true), Some(true))

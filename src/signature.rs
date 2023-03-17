@@ -6,6 +6,16 @@ use std::{
 use byteorder::{BigEndian, ByteOrder};
 use num_bigint::BigInt;
 
+use crate::utils;
+
+pub struct SignatureHash(BigInt);
+
+impl AsRef<BigInt> for SignatureHash {
+    fn as_ref(&self) -> &BigInt {
+        &self.0
+    }
+}
+
 pub struct Signature {
     pub r: BigInt,
     pub s: BigInt,
@@ -91,6 +101,17 @@ impl Signature {
         final_r.push(*result.len().to_be_bytes().last().unwrap());
         final_r.extend_from_slice(&result);
         final_r
+    }
+
+    pub fn signature_hash(passphrase: &str) -> SignatureHash {
+        SignatureHash(BigInt::from_bytes_be(
+            num_bigint::Sign::Plus,
+            &utils::hash256(passphrase.as_bytes()),
+        ))
+    }
+
+    pub fn signature_hash_from_hex(passphrase: &str) -> SignatureHash {
+        SignatureHash(BigInt::parse_bytes(passphrase.as_bytes(), 16).unwrap())
     }
 }
 

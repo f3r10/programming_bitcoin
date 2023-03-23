@@ -37,7 +37,13 @@ impl S256Point {
             let alpha = x.field.pow(BigInt::from(3)) + b.field;
             let alpha = S256Field { field: alpha };
             let beta = alpha.sqrt();
-            if beta.clone().field.num.pow(2) == BigInt::from(0) {
+            if beta
+                .clone()
+                .field
+                .num
+                .modpow(&BigInt::from(1), &BigInt::from(2))
+                == BigInt::from(0)
+            {
                 let even_beta = beta.clone();
                 let odd_beta = S256Field::new(P.to_owned() - beta.clone().field.num);
                 if is_even {
@@ -144,8 +150,7 @@ mod secp256k1_point_tests {
     use num_bigint::BigInt;
 
     use crate::{
-        private_key::PrivateKey,
-        signature::Signature, PointWrapper, S256Field, S256Point, G, N,
+        private_key::PrivateKey, signature::Signature, PointWrapper, S256Field, S256Point, G, N,
     };
 
     #[test]

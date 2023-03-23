@@ -53,7 +53,7 @@ pub fn little_endian_to_int(s: &[u8]) -> BigInt {
     BigInt::from_bytes_le(num_bigint::Sign::Plus, s)
 }
 
-pub fn int_to_little_endian(s: BigInt, limit: u64) -> Vec<u8> {
+pub fn int_to_little_endian(s: &BigInt, limit: u64) -> Vec<u8> {
     let i = s.to_signed_bytes_le();
     let mut buffer = vec![0; limit.try_into().unwrap()];
     let mut handle = i.take(limit);

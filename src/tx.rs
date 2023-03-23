@@ -3,7 +3,9 @@ use std::{fmt::Display, io::Read};
 use byteorder::{BigEndian, ByteOrder};
 use num_bigint::BigInt;
 
-use crate::{script::Script, tx_fetcher::TxFetcher, utils};
+use crate::{
+    op::OpCodeFunctions, script::Script, signature::Signature, tx_fetcher::TxFetcher, utils,
+};
 
 #[derive(Debug, Clone)]
 pub struct TxOut {
@@ -15,7 +17,7 @@ pub struct TxOut {
 pub struct TxIn {
     pub prev_tx: Vec<u8>,
     pub prev_index: BigInt,
-    pub script_sig: Script,
+    pub script_sig: Option<Script>,
     pub sequence: BigInt,
 }
 
@@ -77,7 +79,7 @@ impl Tx {
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut result: Vec<Vec<u8>> = Vec::new();
-        result.push(utils::int_to_little_endian(self.version.clone(), 4));
+        result.push(utils::int_to_little_endian(&self.version, 4));
         result.push(utils::encode_varint(self.tx_ins.len()));
         for tx_in in &self.tx_ins {
             result.push(tx_in.serialize())
@@ -86,7 +88,7 @@ impl Tx {
         for tx_out in &self.tx_outs {
             result.push(tx_out.serialize())
         }
-        result.push(utils::int_to_little_endian(self.locktime.clone(), 4));
+        result.push(utils::int_to_little_endian(&self.locktime, 4));
         result.concat()
     }
 
@@ -102,10 +104,80 @@ impl Tx {
         }
         tx_ins_total - tx_outs_total
     }
+
+    pub fn sig_hash(&self, input_index: usize) -> Vec<u8> {
+        let mut s = utils::int_to_little_endian(&self.version, 4);
+        s.append(&mut utils::encode_varint(self.tx_ins.len()));
+        for (i, tx_in) in self.tx_ins.iter().enumerate() {
+            if i == input_index {
+                let mut tx = TxIn::new(
+                    tx_in.prev_tx.clone(),
+                    tx_in.prev_index.clone(),
+                    Some(tx_in.script_pubkey(self.testnet)),
+                    tx_in.sequence.clone(),
+                )
+                .serialize();
+                s.append(&mut tx)
+            } else {
+                let mut tx = TxIn::new(
+                    tx_in.prev_tx.clone(),
+                    tx_in.prev_index.clone(),
+                    None,
+                    tx_in.sequence.clone(),
+                )
+                .serialize();
+                s.append(&mut tx)
+            }
+        }
+
+        s.append(&mut utils::encode_varint(self.tx_outs.len()));
+        for tx_out in &self.tx_outs {
+            s.append(&mut tx_out.clone().serialize())
+        }
+        s.append(&mut utils::int_to_little_endian(&self.locktime, 4));
+        s.append(&mut utils::u32_to_little_endian(
+            *OpCodeFunctions::op_sig_hash_all().as_ref(),
+            4,
+        ));
+        let hash = utils::hash256(&s);
+        return hash;
+    }
+
+    pub fn verify_input(&self, input_index: usize) -> bool {
+        let tx_in = &self.tx_ins[input_index];
+        let script_pubkey = tx_in.script_pubkey(self.testnet);
+        let sig_hash = hex::encode(self.sig_hash(input_index));
+        let z = Signature::signature_hash_from_hex(&sig_hash);
+        match tx_in.script_sig.clone() {
+            Some(script_sig) => {
+                let combined = script_sig + script_pubkey;
+                combined.evaluate(z)
+            }
+            None => false,
+        }
+    }
+
+    pub fn verify(&self) -> bool {
+        if self.fee(self.testnet) < BigInt::from(0) {
+            return false;
+        } else {
+            for i in 0..self.tx_ins.len() {
+                if !self.verify_input(i) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
 }
 
 impl TxIn {
-    pub fn new(prev_tx: Vec<u8>, prev_index: BigInt, script_sig: Script, sequence: BigInt) -> Self {
+    pub fn new(
+        prev_tx: Vec<u8>,
+        prev_index: BigInt,
+        script_sig: Option<Script>,
+        sequence: BigInt,
+    ) -> Self {
         TxIn {
             prev_tx,
             prev_index,
@@ -128,7 +200,7 @@ impl TxIn {
         TxIn {
             prev_tx: prev_tx_buffer.to_vec(),
             prev_index,
-            script_sig,
+            script_sig: Some(script_sig),
             sequence,
         }
     }
@@ -138,9 +210,12 @@ impl TxIn {
         let mut prev_tx = self.prev_tx.clone();
         prev_tx.reverse();
         result.push(prev_tx);
-        result.push(utils::int_to_little_endian(self.prev_index.clone(), 4));
-        result.push(self.script_sig.serialize());
-        result.push(utils::int_to_little_endian(self.sequence.clone(), 4));
+        result.push(utils::int_to_little_endian(&self.prev_index, 4));
+        match &self.script_sig {
+            Some(script_sig) => result.push(script_sig.serialize()),
+            None => result.push([0, 0].to_vec()),
+        };
+        result.push(utils::int_to_little_endian(&self.sequence, 4));
         result.concat()
     }
 
@@ -191,7 +266,7 @@ impl TxOut {
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut result: Vec<Vec<u8>> = Vec::new();
-        result.push(utils::int_to_little_endian(self.amount.clone(), 8));
+        result.push(utils::int_to_little_endian(&self.amount, 8));
         result.push(self.script_pubkey.serialize());
         result.concat()
     }
@@ -214,6 +289,8 @@ mod tx_tests {
 
     use num_bigint::BigInt;
 
+    use crate::{s256_point::S256Point, signature::Signature};
+
     use super::Tx;
 
     #[test]
@@ -228,7 +305,7 @@ mod tx_tests {
             hex::encode(tx.tx_ins[0].prev_tx.clone()),
             "d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81"
         );
-        assert_eq!(hex::encode(tx.tx_ins[0].script_sig.serialize()), "6b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278a");
+        assert_eq!(hex::encode(tx.tx_ins[0].script_sig.clone().unwrap().serialize()), "6b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278a");
         assert_eq!(tx.tx_ins[0].sequence, BigInt::from(0xfffffffe_u32));
     }
 
@@ -294,5 +371,46 @@ mod tx_tests {
         let mut cursor_tx = Cursor::new(tx_encode);
         let tx = Tx::parse(&mut cursor_tx, false);
         assert_eq!(tx.fee(false), BigInt::from(140500));
+    }
+
+    #[test]
+    fn test_fee_positive_tx() {
+        let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
+        let tx_encode = hex::decode(tx).unwrap();
+        let mut cursor_tx = Cursor::new(tx_encode);
+        let tx = Tx::parse(&mut cursor_tx, false);
+        assert!(tx.fee(false) > BigInt::from(0));
+    }
+
+    #[test]
+    fn test_sig_hash_and_verify_input() {
+        let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
+        let tx_encode = hex::decode(tx).unwrap();
+        let mut cursor_tx = Cursor::new(tx_encode);
+        let tx = Tx::parse(&mut cursor_tx, false);
+        let tx_sig_hash = tx.sig_hash(0);
+        assert_eq!(
+            "27e0c5994dec7824e56dec6b2fcb342eb7cdb0d0957c2fce9882f715e85d81a6",
+            hex::encode(&tx_sig_hash)
+        );
+
+        let der = "3045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed";
+        let sig_encode = hex::decode(der).unwrap();
+        let mut cursor_sig = Cursor::new(sig_encode);
+        let sig_parsed = Signature::parse(&mut cursor_sig);
+        let sec = "0349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278a";
+        let sec_encode = hex::decode(sec).unwrap();
+        let point = S256Point::parse(&sec_encode);
+        let z = Signature::signature_hash_from_vec(tx_sig_hash);
+        assert!(point.verify(&z, sig_parsed))
+    }
+
+    #[test]
+    fn test_tx_verify() {
+        let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
+        let tx_encode = hex::decode(tx).unwrap();
+        let mut cursor_tx = Cursor::new(tx_encode);
+        let tx = Tx::parse(&mut cursor_tx, false);
+        assert!(tx.verify());
     }
 }

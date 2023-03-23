@@ -28,6 +28,7 @@ pub enum OpCodeFunctions {
     OpSwap(u32),
     OpNot(u32),
     OpSha1(u32),
+    OpSigHashAll(u32),
 }
 
 impl OpCodeFunctions {
@@ -62,6 +63,10 @@ impl OpCodeFunctions {
     pub fn op_verify() -> Self {
         OpCodeFunctions::OpVerify(105)
     }
+
+    pub fn op_sig_hash_all() -> Self {
+        OpCodeFunctions::OpSigHashAll(1)
+    }
 }
 
 impl AsRef<u32> for OpCodeFunctions {
@@ -83,6 +88,7 @@ impl AsRef<u32> for OpCodeFunctions {
             OpCodeFunctions::OpSwap(op) => op,
             OpCodeFunctions::OpNot(op) => op,
             OpCodeFunctions::OpSha1(op) => op,
+            OpCodeFunctions::OpSigHashAll(op) => op,
         }
     }
 }
@@ -252,10 +258,11 @@ pub fn operation(
             stack.push(out.to_vec());
             return true;
         }
+        OpCodeFunctions::OpSigHashAll(_) => todo!(),
     }
 }
 
-fn encode_num(num: i32) -> Vec<u8> {
+pub fn encode_num(num: i32) -> Vec<u8> {
     if num == 0 {
         return b"".to_vec();
     }

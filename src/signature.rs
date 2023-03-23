@@ -35,11 +35,8 @@ impl Signature {
         }
         let mut length_buffer = [0; 1];
         stream.read_exact(&mut length_buffer).unwrap();
-        let length = (BigEndian::read_u32(&[0, 0, 0, length_buffer[0]]) + 2) as u64;
-        let len = stream.stream_len().unwrap();
-        if length != len {
-            panic!("Bad signature length")
-        }
+        let length = (BigEndian::read_u32(&[0, 0, 0, length_buffer[0]]) + 2) as u32;
+        // let len = stream.stream_len().unwrap();
         let mut marker_buffer = [0; 1];
         stream.read_exact(&mut marker_buffer).unwrap();
         if marker_buffer[0] != 0x02 {
@@ -59,6 +56,13 @@ impl Signature {
         let mut slength_buffer = [0; 1];
         stream.read_exact(&mut slength_buffer).unwrap();
         let slenght = BigEndian::read_u32(&[0, 0, 0, slength_buffer[0]]);
+
+        // 4 -> marker + len
+        // 2 -> compound and total len
+        if slenght + rlenght + 4 + 2 != length {
+            panic!("Bad signature length")
+        }
+
         let mut s_buffer = vec![0; slenght.try_into().unwrap()];
         stream.read_exact(&mut s_buffer).unwrap();
         let s = BigInt::from_signed_bytes_be(&s_buffer);
@@ -112,6 +116,10 @@ impl Signature {
 
     pub fn signature_hash_from_hex(passphrase: &str) -> SignatureHash {
         SignatureHash(BigInt::parse_bytes(passphrase.as_bytes(), 16).unwrap())
+    }
+
+    pub fn signature_hash_from_vec(passphrase: Vec<u8>) -> SignatureHash {
+        SignatureHash(BigInt::from_signed_bytes_be(&passphrase))
     }
 }
 

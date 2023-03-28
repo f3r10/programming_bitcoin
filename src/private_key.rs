@@ -1,11 +1,12 @@
-use num_bigint::{BigInt, RandBigInt};
+use crypto::{hmac, mac::Mac, sha2::Sha256};
+use num_bigint::BigInt;
 
 use crate::{
     signature::{Signature, SignatureHash},
     utils, PointWrapper, S256Point, G, N,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrivateKey {
     pub secret: BigInt,
     pub point: S256Point,
@@ -29,17 +30,17 @@ impl PrivateKey {
         }
     }
 
-    pub fn hex(self) -> String {
+    pub fn hex(&self) -> String {
         format!("{:#064x}", self.secret)
     }
 
     pub fn sign(&self, z: &SignatureHash, ks: Option<BigInt>) -> Signature {
-        let mut rng = rand::thread_rng();
-        //TODO DANGER this is just for now, it has to be changed later
+        //TODO DANGER Some(ks) it just for test purposes
         let k = match ks {
             Some(v) => v,
-            None => rng.gen_bigint_range(&BigInt::from(0), &N),
+            None => self.deterministic_k(z),
         };
+        let n = N.to_owned();
         let r = match k.clone() * &G.to_owned() {
             PointWrapper::Point {
                 x,
@@ -49,13 +50,55 @@ impl PrivateKey {
             } => x.num,
             PointWrapper::Inf => panic!("R point should not be point to infity"),
         };
-        let k_inv = k.modpow(&(N.to_owned() - 2), &N);
+        let k_inv = k.modpow(&(n.clone() - 2), &n);
         let mut s =
-            ((z.as_ref() + r.clone() * self.secret.clone()) * k_inv).modpow(&BigInt::from(1), &N);
-        if s > N.to_owned() / 2 {
-            s = N.to_owned() - s
+            ((z.as_ref() + r.clone() * self.secret.clone()) * k_inv).modpow(&BigInt::from(1), &n);
+        if s > n.clone() / 2 {
+            s = n - s
         }
         Signature::new(r, s)
+    }
+
+    pub fn deterministic_k(&self, z: &SignatureHash) -> BigInt {
+        let mut k = vec![0_u8; 32];
+        let mut v = vec![1_u8; 32];
+        let mut z = z.as_ref().clone();
+        let n = N.to_owned();
+        if z > n {
+            z -= n.clone()
+        }
+        let z_bytes = utils::int_to_big_endian(&z, 32);
+        let secret_bytes = utils::int_to_big_endian(&self.secret, 32);
+        let s256 = Sha256::new();
+        let mut kmac = hmac::Hmac::new(s256, &k[..]);
+        kmac.input(&[&v[..], &[0_u8], &secret_bytes, &z_bytes].concat());
+        kmac.raw_result(&mut k);
+        let mut vmac = hmac::Hmac::new(s256, &k[..]);
+        vmac.input(&v);
+        vmac.raw_result(&mut v);
+        let mut kmac = hmac::Hmac::new(s256, &k[..]);
+        kmac.input(&[&v[..], &[1_u8], &secret_bytes, &z_bytes].concat());
+        kmac.raw_result(&mut k);
+        let mut vmac = hmac::Hmac::new(s256, &k[..]);
+        vmac.input(&v);
+        vmac.raw_result(&mut v);
+        let mut candidate: BigInt;
+        loop {
+            let mut vmac = hmac::Hmac::new(s256, &k[..]);
+            vmac.input(&v);
+            vmac.raw_result(&mut v);
+            candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, &v);
+            if candidate >= BigInt::from(1) && candidate < n {
+                break;
+            }
+            let mut kmac = hmac::Hmac::new(s256, &k[..]);
+            kmac.input(&[&v[..], &[0_u8]].concat());
+            kmac.raw_result(&mut k);
+            let mut vmac = hmac::Hmac::new(s256, &k[..]);
+            vmac.input(&v);
+            vmac.raw_result(&mut v);
+        }
+        return candidate;
     }
 
     pub fn wif(self, compressed: Option<bool>, testnet: Option<bool>) -> String {

@@ -1,5 +1,5 @@
 use core::panic;
-use std::{io::Read, ops::Add, vec};
+use std::{fmt::Display, io::Read, ops::Add, vec};
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
@@ -141,6 +141,26 @@ impl Script {
         let result = self.raw_serialize();
         let total = result.len();
         [utils::encode_varint(total), result].concat()
+    }
+}
+
+impl Display for Script {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut result: Vec<String> = Vec::new();
+        for cmd in &self.cmds {
+            match cmd {
+                Command::Element(elm) => {
+                    let name = hex::encode(elm);
+                    result.push(name);
+                }
+                Command::Operation(op) => {
+                    let name = op::get_op_names(op);
+                    result.push(name.to_string())
+                }
+            }
+        }
+        let fmt_opcodes = result.join(" ");
+        writeln!(f, "{}", fmt_opcodes)
     }
 }
 

@@ -80,8 +80,8 @@ impl S256Point {
         }
     }
 
-    pub fn sec(self, compressed: Option<bool>) -> Vec<u8> {
-        match self.point {
+    pub fn sec(&self, compressed: Option<bool>) -> Vec<u8> {
+        match &self.point {
             PointWrapper::Inf => panic!("Public point can not be point to infinity"),
             PointWrapper::Point { x, y, a: _, b: _ } => {
                 if compressed.unwrap_or(true) {

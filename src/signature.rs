@@ -47,7 +47,7 @@ impl Signature {
         let rlenght = BigEndian::read_u32(&[0, 0, 0, rlength_buffer[0]]);
         let mut r_buffer = vec![0; rlenght.try_into().unwrap()];
         stream.read_exact(&mut r_buffer).unwrap();
-        let r = BigInt::from_signed_bytes_be(&r_buffer);
+        let r = BigInt::from_bytes_be(num_bigint::Sign::Plus, &r_buffer);
         let mut marker_buffer = [0; 1];
         stream.read_exact(&mut marker_buffer).unwrap();
         if marker_buffer[0] != 0x02 {
@@ -65,17 +65,18 @@ impl Signature {
 
         let mut s_buffer = vec![0; slenght.try_into().unwrap()];
         stream.read_exact(&mut s_buffer).unwrap();
-        let s = BigInt::from_signed_bytes_be(&s_buffer);
+        let s = BigInt::from_bytes_be(num_bigint::Sign::Plus, &s_buffer);
         Signature { r, s }
     }
 
     pub fn der(&self) -> Vec<u8> {
         let mut result: Vec<u8> = Vec::new();
         {
-            let mut rbin = &self.r.to_bytes_be().1.to_vec()[0..32];
+            // let mut rbin = &self.r.to_bytes_be().1.to_vec()[0..32];
+            let mut rbin = &utils::int_to_big_endian(&self.r, 32)[..];
             let mut v = Vec::new();
             v.extend_from_slice(rbin.strip_prefix(b"\x00").unwrap_or(rbin));
-            if rbin[0] & 0x80 == 1 {
+            if rbin[0] & 0x80 != 0 {
                 let marker = &b"\x00"[0..1];
                 v.clear();
                 v.extend_from_slice(&[marker, rbin.clone()].concat()[..]);
@@ -83,11 +84,12 @@ impl Signature {
             rbin = v.as_slice();
             result.push(0x2);
             //extend_from_slice(&vec![&b"\x02"[0..1], rbin.len().to_be_bytes().last().unwrap(), rbin].concat());
-            result.push(*rbin.len().to_be_bytes().last().unwrap());
+            result.push(*(rbin.len()).to_be_bytes().last().unwrap());
             result.extend_from_slice(rbin);
         }
         {
-            let mut sbin = &self.s.to_bytes_be().1.to_vec()[0..32];
+            // let mut sbin = &self.s.to_bytes_be().1.to_vec()[0..32];
+            let mut sbin = &utils::int_to_big_endian(&self.s, 32)[..];
             let mut v = Vec::new();
             v.extend_from_slice(sbin.strip_prefix(b"\x00").unwrap_or(sbin));
             if sbin[0] & 0x80 != 0 {
@@ -119,7 +121,11 @@ impl Signature {
     }
 
     pub fn signature_hash_from_vec(passphrase: Vec<u8>) -> SignatureHash {
-        SignatureHash(BigInt::from_signed_bytes_be(&passphrase))
+        SignatureHash(BigInt::from_bytes_be(num_bigint::Sign::Plus, &passphrase))
+    }
+
+    pub fn signature_hash_from_int(passphrase: BigInt) -> SignatureHash {
+        SignatureHash(passphrase)
     }
 }
 

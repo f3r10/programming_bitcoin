@@ -115,6 +115,28 @@ pub fn parse_raw_op_codes(op_code: u32) -> OpCodeFunctions {
     }
 }
 
+pub fn get_op_names(op_code: &OpCodeFunctions) -> &str {
+    match op_code {
+        OpCodeFunctions::Op0(_) => "OP_0",
+        OpCodeFunctions::OpChecksig(_) => "OP_CHECK_SIG",
+        OpCodeFunctions::OpDup(_) => "OP_DUP",
+        OpCodeFunctions::OpHash160(_) => "OP_HASH_160",
+        OpCodeFunctions::OpHash256(_) => "OP_HASH_256",
+        OpCodeFunctions::OpEqualverify(_) => "OP_EQUAL_VERIFY",
+        OpCodeFunctions::OpEqual(_) => "OP_EQUAL",
+        OpCodeFunctions::OpVerify(_) => "OP_VERIFY",
+        OpCodeFunctions::Op6(_) => "OP_6",
+        OpCodeFunctions::OpAdd(_) => "OP_ADD",
+        OpCodeFunctions::OpMul(_) => "OP_MUL",
+        OpCodeFunctions::Op2(_) => "OP_2",
+        OpCodeFunctions::Op2dup(_) => "OP_2_DUP",
+        OpCodeFunctions::OpSwap(_) => "OP_SWAP",
+        OpCodeFunctions::OpNot(_) => "OP_NOT",
+        OpCodeFunctions::OpSha1(_) => "OP_SHA1",
+        OpCodeFunctions::OpSigHashAll(_) => "OP_SIG_HASH_ALL",
+    }
+}
+
 pub fn operation(
     op_code: OpCodeFunctions,
     stack: &mut Vec<Vec<u8>>,

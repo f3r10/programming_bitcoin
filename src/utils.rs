@@ -1,10 +1,16 @@
 use core::panic;
 use std::io::Read;
 
-use num_bigint::BigInt;
+use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
+
+use crate::{
+    op,
+    script::{Command, Script},
+    utils,
+};
 
 const BASE58_ALPHABET: &'static [u8] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -36,6 +42,16 @@ pub fn encode_base58(s: &[u8]) -> String {
     prefix + (&result.chars().rev().collect::<String>()[..])
 }
 
+pub fn p2pkh_script(h160: Vec<u8>) -> Script {
+    Script::new(Some(vec![
+        Command::Operation(op::parse_raw_op_codes(0x76)),
+        Command::Operation(op::parse_raw_op_codes(0xa9)),
+        Command::Element(h160),
+        Command::Operation(op::parse_raw_op_codes(0x88)),
+        Command::Operation(op::parse_raw_op_codes(0xac)),
+    ]))
+}
+
 pub fn hash256(b: &[u8]) -> Vec<u8> {
     Sha256::digest(Sha256::digest(b)).to_vec()
 }
@@ -43,6 +59,37 @@ pub fn hash256(b: &[u8]) -> Vec<u8> {
 pub fn encode_base58_checksum(b: &[u8]) -> String {
     let h = &hash256(b)[0..4];
     encode_base58(&[b, h].concat())
+}
+
+// this is a special case based on encode_base58_checksum
+pub fn decode_base58(s: &str) -> Vec<u8> {
+    let mut num = BigUint::from(0_u32);
+    for c in s.bytes() {
+        num *= 58_u32;
+        let el = BASE58_ALPHABET.iter().position(|x| c == *x).unwrap();
+        num += el
+    }
+    let combined = num.to_bytes_be();
+    let checksum: Vec<u8> = combined.clone().into_iter().rev().take(4).collect();
+    let head: Vec<u8> = combined
+        .clone()
+        .into_iter()
+        .take(combined.len() - 4)
+        .to_owned()
+        .collect();
+    let hash256: Vec<u8> = utils::hash256(head.as_slice())
+        .into_iter()
+        .take(4)
+        .rev()
+        .collect();
+    if hash256 != checksum {
+        panic!(
+            "bad address: {} {}",
+            hex::encode(checksum),
+            hex::encode(hash256)
+        )
+    }
+    combined[1..(combined.len() - 4)].to_vec()
 }
 
 pub fn hash160(s: &[u8]) -> Vec<u8> {
@@ -59,6 +106,21 @@ pub fn int_to_little_endian(s: &BigInt, limit: u64) -> Vec<u8> {
     let mut handle = i.take(limit);
     handle.read(&mut buffer).unwrap();
     buffer.to_vec()
+}
+
+pub fn int_to_big_endian(s: &BigInt, limit: u64) -> Vec<u8> {
+    let i = s.to_signed_bytes_be();
+    if i.len() as u64 > limit {
+        let i = s.to_signed_bytes_le();
+        let mut buffer = vec![0; limit.try_into().unwrap()];
+        let mut handle = i.take(limit);
+        handle.read(&mut buffer).unwrap();
+        buffer.reverse();
+        buffer.to_vec()
+    } else {
+        let diff = limit - (i.len() as u64);
+        [vec![0; diff.try_into().unwrap()], i].concat()
+    }
 }
 
 pub fn usize_to_little_endian(s: usize, limit: u64) -> Vec<u8> {
@@ -127,6 +189,8 @@ pub fn encode_varint(i: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod utils_tests {
+    use crate::utils::{decode_base58, encode_base58_checksum};
+
     use super::{encode_base58, encode_varint};
 
     #[test]
@@ -146,6 +210,14 @@ mod utils_tests {
         let hex = &b"\0\0\0\0abc"[..];
         let base58 = encode_base58(hex);
         assert_eq!(base58, "1111ZiCa");
+
+        let addr = "mnrVtF8DWjMu839VW3rBfgYaAfKk8983Xf";
+        let h160 = hex::encode(decode_base58(addr));
+        let want = "507b27411ccf7f16f10297de6cef3f291623eddf";
+        assert_eq!(h160, want);
+        let got =
+            encode_base58_checksum(&[b"\x6f"[..].to_vec(), hex::decode(h160).unwrap()].concat());
+        assert_eq!(got, addr)
     }
 
     #[test]

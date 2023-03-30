@@ -47,10 +47,53 @@
   let combined_script = script_sig + script_pubkey;
   assert!(combined_script.evaluate(z))
 ```
+### How to create a raw TX
+#### The first step is to define one or more inputs from where the coins have to come. It is also necessary to define which index has to be used:
+```rust
+  let prev_tx_faucet =
+      hex::decode("177546b0d70663917f9dbe3dc6ddf05289d0a43d6cd721bf79f62581bc75a1cc")
+          .unwrap();
+  let prev_tx_faucet_index = BigInt::from(0);
+  let prev_tx_ex4 =
+      hex::decode("3fd155536987271e0f94358e9fa2e135bb620981ea8dbe8e60645d0daa2ffe3b")
+          .unwrap();
+  let prev_tx_ex4_index = BigInt::from(1);
+  let mut tx_ins: Vec<TxIn> = Vec::new();
+  tx_ins.push(TxIn::new(prev_tx_faucet, prev_tx_faucet_index, None, None));
+  tx_ins.push(TxIn::new(prev_tx_ex4, prev_tx_ex4_index, None, None));
+```
+#### Then it is necessary to define the output or the outputs where we want to send the coins, and the ammount to transfer.
+```rust
+  let target_address = "mzzLk9MmXzmjCBLgjoeNDxrbdrt511t5Gm";
+  let target_amount = 0.01728903;
+  let mut tx_outs: Vec<TxOut> = Vec::new();
+  let h160 = utils::decode_base58(target_address);
+  let script_pubkey = utils::p2pkh_script(h160);
+  let target_satoshis = BigInt::from((target_amount * 100_000_000_f64) as u64);
+  tx_outs.push(TxOut::new(target_satoshis, script_pubkey));
+```
+#### After the input and output lists are ready, we can create a TX struct almost ready to be broadcasted.
+```rust
+  let mut tx_obj = Tx::new(BigInt::from(1), tx_ins, tx_outs, BigInt::from(0), true);
+```
+#### The last step is to sign each input. For this step is necessary to use the pair (private key) of the public key defined on the inputs (the outputs of previous TX) in which we were the recipients.
+```rust
+let secret = "f3r10@programmingblockchain.com my secret";
+let priva = PrivateKey::new(&PrivateKey::generate_secret(secret));
+assert!(tx_obj.sign_input(0, priva.clone()));
+assert!(tx_obj.sign_input(1, priva.clone()));
+```
+#### Finally, we can get the serialized TX ready for broadcasting.
+```rust
+  hex::encode(tx_obj.serialize())
+```
+#### Some useful links:
+  - [An online TX decode](https://live.blockcypher.com/btc/decodetx/)
+  - [For broadcast the TX](https://tbtc.bitaps.com/broadcast)
 ### Testing
 ```bash
 cargo test
 ```
 ### TODOs
-- [ ] implement deterministic_k
+- [x] implement deterministic_k
 - [ ] using this simple ervice for checking the fee: https://blockstream.info/api/tx/d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81/hex

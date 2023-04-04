@@ -16,6 +16,7 @@ impl AsRef<BigInt> for SignatureHash {
     }
 }
 
+#[derive(Clone)]
 pub struct Signature {
     pub r: BigInt,
     pub s: BigInt,

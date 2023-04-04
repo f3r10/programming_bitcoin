@@ -29,6 +29,7 @@ pub enum OpCodeFunctions {
     OpNot(u32),
     OpSha1(u32),
     OpSigHashAll(u32),
+    OpCheckMultisig(u32)
 }
 
 impl OpCodeFunctions {
@@ -67,6 +68,10 @@ impl OpCodeFunctions {
     pub fn op_sig_hash_all() -> Self {
         OpCodeFunctions::OpSigHashAll(1)
     }
+
+    pub fn op_checkmultisig() -> Self {
+        OpCodeFunctions::OpCheckMultisig(0xa3)
+    }
 }
 
 impl AsRef<u32> for OpCodeFunctions {
@@ -89,6 +94,7 @@ impl AsRef<u32> for OpCodeFunctions {
             OpCodeFunctions::OpNot(op) => op,
             OpCodeFunctions::OpSha1(op) => op,
             OpCodeFunctions::OpSigHashAll(op) => op,
+            OpCodeFunctions::OpCheckMultisig(op) => op,
         }
     }
 }
@@ -111,6 +117,7 @@ pub fn parse_raw_op_codes(op_code: u32) -> OpCodeFunctions {
         0x7c => OpCodeFunctions::OpSwap(0x7c),
         0x91 => OpCodeFunctions::OpNot(0x91),
         0xa7 => OpCodeFunctions::OpSha1(0xa7),
+        0xa3 => OpCodeFunctions::OpCheckMultisig(0xa3),
         unknow => panic!("unknown opCode: {}", unknow),
     }
 }
@@ -134,6 +141,7 @@ pub fn get_op_names(op_code: &OpCodeFunctions) -> &str {
         OpCodeFunctions::OpNot(_) => "OP_NOT",
         OpCodeFunctions::OpSha1(_) => "OP_SHA1",
         OpCodeFunctions::OpSigHashAll(_) => "OP_SIG_HASH_ALL",
+        OpCodeFunctions::OpCheckMultisig(_) => "OP_CHECKMULTISIG",
     }
 }
 
@@ -281,6 +289,54 @@ pub fn operation(
             return true;
         }
         OpCodeFunctions::OpSigHashAll(_) => todo!(),
+        OpCodeFunctions::OpCheckMultisig(_) => {
+            if stack.len() < 1 {
+                return false
+            }
+            let n = decode_num(stack.pop().unwrap()) as usize;
+            if stack.len() < n + 1 {
+                return false;
+            }
+            let mut sec_pubkeys: Vec<S256Point> = Vec::with_capacity(n);
+            for _ in 0..n {
+                let sec_pubkey = stack.pop().unwrap();
+                let point = S256Point::parse(&sec_pubkey);
+                sec_pubkeys.push(point);
+            }
+            let m = decode_num(stack.pop().unwrap()) as usize;
+            if stack.len() < m + 1 {
+                return false;
+            }
+            let mut der_signatures: Vec<Signature> = Vec::with_capacity(n);
+            for _ in 0..m {
+                // each DER signature is assumed to be signed with SIGHASH_ALL
+                let mut der_signature = stack.pop().unwrap();
+                der_signature.pop().unwrap();
+                let mut der_signature_cursor = Cursor::new(der_signature);
+                let sig = Signature::parse(&mut der_signature_cursor);
+                der_signatures.push(sig);
+            }
+
+            // off-by-one error
+            stack.pop().unwrap();
+
+            sec_pubkeys.reverse();
+            for sig in der_signatures {
+                if sec_pubkeys.len() == 0 {
+                    return false
+                }
+                while sec_pubkeys.len() > 0 {
+                    let point = sec_pubkeys.pop().unwrap();
+                    let check = point.verify(z, sig.clone());
+                    if  check {
+                        break;
+                    }
+                }
+            }
+            stack.push(encode_num(1));
+            return true
+
+        },
     }
 }
 
@@ -342,9 +398,9 @@ fn decode_num(element: Vec<u8>) -> i32 {
 
 #[cfg(test)]
 mod op_tests {
-    use crate::op::decode_num;
+    use crate::{op::decode_num, signature::Signature};
 
-    use super::encode_num;
+    use super::{encode_num, OpCodeFunctions, operation};
 
     #[test]
     fn test_encode_num() {
@@ -360,5 +416,23 @@ mod op_tests {
         assert_eq!(2, decode_num(hex::decode("02").unwrap()));
         assert_eq!(999, decode_num(hex::decode("e703").unwrap()));
         assert_eq!(0, decode_num(hex::decode("").unwrap()));
+    }
+
+    #[test]
+    fn test_op_checkmultisig() {
+        let op_code = OpCodeFunctions::op_checkmultisig(); 
+        let z_raw = hex::decode("e71bfa115715d6fd33796948126f40a8cdd39f187e4afb03896795189fe1423c").unwrap();
+        let z = Signature::signature_hash_from_vec(z_raw);
+        let sig1 = hex::decode("3045022100dc92655fe37036f47756db8102e0d7d5e28b3beb83a8fef4f5dc0559bddfb94e02205a36d4e4e6c7fcd16658c50783e00c341609977aed3ad00937bf4ee942a8993701").unwrap();
+        let sig2 = hex::decode("3045022100da6bee3c93766232079a01639d07fa869598749729ae323eab8eef53577d611b02207bef15429dcadce2121ea07f233115c6f09034c0be68db99980b9a6c5e75402201").unwrap();
+        let sec1 = hex::decode("022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb70").unwrap();
+        let sec2 = hex::decode("03b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb71").unwrap();
+        let mut stack = vec![[0_u8].to_vec(), sig1, sig2, [2_u8].to_vec(), sec1, sec2, [2_u8].to_vec()];
+        let mut cmds = Vec::new();
+        let mut altstack = Vec::new();
+        let res = operation(op_code, &mut stack, &mut cmds, &mut altstack, &z);
+        assert!(res);
+        let stack_elm = &stack[0];
+        assert_eq!(decode_num(stack_elm.clone()), 1)
     }
 }

@@ -187,11 +187,31 @@ pub fn encode_varint(i: usize) -> Vec<u8> {
     }
 }
 
+pub fn h160_to_p2pkh_address(h160: &Vec<u8>, testnet: bool) -> String {
+    let prefix: u8;
+    if testnet {
+        prefix = 0x6f
+    } else {
+        prefix = 0x00
+    }
+    encode_base58_checksum(&[[prefix].to_vec(), h160.to_vec()].concat())
+}
+
+pub fn h160_to_p2psh_address(h160: &Vec<u8>, testnet: bool) -> String {
+    let prefix: u8;
+    if testnet {
+        prefix = 0xc4
+    } else {
+        prefix = 0x05
+    }
+    encode_base58_checksum(&[[prefix].to_vec(), h160.to_vec()].concat())
+}
+
 #[cfg(test)]
 mod utils_tests {
-    use crate::utils::{decode_base58, encode_base58_checksum};
+    use crate::utils::{decode_base58, encode_base58_checksum, h160_to_p2psh_address};
 
-    use super::{encode_base58, encode_varint};
+    use super::{encode_base58, encode_varint, h160_to_p2pkh_address};
 
     #[test]
     fn base58_test() {
@@ -224,5 +244,23 @@ mod utils_tests {
     fn encode_varint_test() {
         let res = encode_varint(107);
         assert_eq!(hex::encode(res), "6b")
+    }
+
+    #[test]
+    fn test_p2pkh_address() {
+        let h160 = hex::decode("74d691da1574e6b3c192ecfb52cc8984ee7b6c56").unwrap();
+        let want = "1BenRpVUFK65JFWcQSuHnJKzc4M8ZP8Eqa";
+        assert_eq!(h160_to_p2pkh_address(&h160, false), want);
+        let want = "mrAjisaT4LXL5MzE81sfcDYKU3wqWSvf9q";
+        assert_eq!(h160_to_p2pkh_address(&h160, true), want)
+    }
+
+    #[test]
+    fn test_p2sh_address() {
+        let h160 = hex::decode("74d691da1574e6b3c192ecfb52cc8984ee7b6c56").unwrap();
+        let want = "3CLoMMyuoDQTPRD3XYZtCvgvkadrAdvdXh";
+        assert_eq!(h160_to_p2psh_address(&h160, false), want);
+        let want = "2N3u1R6uwQfuobCqbCgBkpsgBxvr1tZpe7B";
+        assert_eq!(h160_to_p2psh_address(&h160, true), want)
     }
 }

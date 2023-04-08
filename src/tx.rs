@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    io::{Read, Seek},
+    io::{Cursor, Read, Seek},
 };
 
 use byteorder::{BigEndian, ByteOrder};
@@ -127,29 +127,27 @@ impl Tx {
         tx_ins_total - tx_outs_total
     }
 
-    pub fn sig_hash(&self, input_index: usize) -> BigInt {
+    pub fn sig_hash(&self, input_index: usize, redeem_script: Option<Script>) -> BigInt {
         let mut s = utils::int_to_little_endian(&self.version, 4);
         s.append(&mut utils::encode_varint(self.tx_ins.len()));
         for (i, tx_in) in self.tx_ins.iter().enumerate() {
+            let script_sig: Option<Script>;
             if i == input_index {
-                let mut tx = TxIn::new(
-                    tx_in.prev_tx.clone(),
-                    tx_in.prev_index.clone(),
-                    Some(tx_in.script_pubkey(self.testnet)),
-                    tx_in.sequence.clone(),
-                )
-                .serialize();
-                s.append(&mut tx);
+                match redeem_script.as_ref() {
+                    Some(redeem) => script_sig = Some(redeem.clone()),
+                    None => script_sig = Some(tx_in.script_pubkey(self.testnet)),
+                }
             } else {
-                let mut tx = TxIn::new(
-                    tx_in.prev_tx.clone(),
-                    tx_in.prev_index.clone(),
-                    None,
-                    tx_in.sequence.clone(),
-                )
-                .serialize();
-                s.append(&mut tx);
+                script_sig = None;
             }
+            let mut tx = TxIn::new(
+                tx_in.prev_tx.clone(),
+                tx_in.prev_index.clone(),
+                script_sig,
+                tx_in.sequence.clone(),
+            )
+            .serialize();
+            s.append(&mut tx);
         }
 
         s.append(&mut utils::encode_varint(self.tx_outs.len()));
@@ -168,7 +166,20 @@ impl Tx {
     pub fn verify_input(&self, input_index: usize) -> bool {
         let tx_in = &self.tx_ins[input_index];
         let script_pubkey = tx_in.script_pubkey(self.testnet);
-        let sig_hash = self.sig_hash(input_index);
+        let redeem_script: Option<Script>;
+        if script_pubkey.is_p2sh_script_pubkey() {
+            // OP_0 , SIG1, SIG2, ..., RedeemScript
+            let cmd = match tx_in.script_sig.as_ref().unwrap().cmds.last().unwrap() {
+                Command::Element(elm) => elm,
+                Command::Operation(_) => panic!("invalid last Cmd for redeem script"),
+            };
+            let raw_redeem = [utils::encode_varint(cmd.len()), cmd.to_vec()].concat();
+            let mut raw_redeem_cursor = Cursor::new(raw_redeem);
+            redeem_script = Some(Script::parse(&mut raw_redeem_cursor));
+        } else {
+            redeem_script = None
+        }
+        let sig_hash = self.sig_hash(input_index, redeem_script);
         let z = Signature::signature_hash_from_int(sig_hash);
         match tx_in.script_sig.clone() {
             Some(script_sig) => {
@@ -203,7 +214,7 @@ impl Tx {
     }
 
     pub fn sign_input(&mut self, input_index: usize, private_key: PrivateKey) -> bool {
-        let z = self.sig_hash(input_index);
+        let z = self.sig_hash(input_index, None);
         let sign = private_key.sign(&Signature::signature_hash_from_int(z), None);
         let mut der_sighash = sign.der();
         der_sighash.append(&mut utils::u32_to_little_endian(
@@ -296,9 +307,7 @@ impl TxIn {
 
     pub fn fetch_tx(&self, testnet: bool) -> Tx {
         let mut tx_fetcher = TxFetcher::new();
-        tx_fetcher
-            .fetch(&hex::encode(self.prev_tx.clone()), testnet, false)
-            .clone()
+        tx_fetcher.fetch(&hex::encode(self.prev_tx.clone()), testnet, false)
     }
 
     pub fn value(&self, testnet: bool) -> BigInt {
@@ -308,6 +317,7 @@ impl TxIn {
         tx.tx_outs[index].amount.clone()
     }
 
+    /// Fetch the TX
     pub fn script_pubkey(&self, testnet: bool) -> Script {
         let tx = self.fetch_tx(testnet);
         let index_buf = self.prev_index.to_signed_bytes_be();
@@ -373,6 +383,7 @@ mod tx_tests {
         script::{Command, Script},
         signature::Signature,
         tx::{TxIn, TxOut},
+        tx_fetcher::TxFetcher,
         utils,
     };
 
@@ -476,7 +487,7 @@ mod tx_tests {
         let tx_encode = hex::decode(tx).unwrap();
         let mut cursor_tx = Cursor::new(tx_encode);
         let tx = Tx::parse(&mut cursor_tx, false);
-        let tx_sig_hash = tx.sig_hash(0);
+        let tx_sig_hash = tx.sig_hash(0, None);
         assert_eq!(
             "18037338614366229343027734445863508930887653120159589908930024158807354868134",
             tx_sig_hash.to_string()
@@ -508,7 +519,7 @@ mod tx_tests {
         let tx_encode = hex::decode(tx).unwrap();
         let mut cursor_tx = Cursor::new(tx_encode);
         let mut tx = Tx::parse(&mut cursor_tx, false);
-        let z = tx.sig_hash(0);
+        let z = tx.sig_hash(0, None);
         let private_key =
             PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(8675309)));
         let mut der_sighash = private_key
@@ -566,5 +577,49 @@ mod tx_tests {
         assert!(tx_obj.sign_input(0, priva.clone()));
         assert!(tx_obj.sign_input(1, priva.clone()));
         assert_eq!(want, hex::encode(tx_obj.serialize()));
+    }
+
+    #[test]
+    fn test_sig_hash() {
+        let mut fetcher = TxFetcher::new();
+        let tx = fetcher.fetch(
+            "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
+            false,
+            true,
+        );
+        let want = BigInt::parse_bytes(
+            b"27e0c5994dec7824e56dec6b2fcb342eb7cdb0d0957c2fce9882f715e85d81a6",
+            16,
+        )
+        .unwrap();
+        assert_eq!(tx.sig_hash(0, None), want)
+    }
+
+    #[test]
+    fn test_verify_p2sh() {
+        let mut fetcher = TxFetcher::new();
+        let tx = fetcher.fetch(
+            "46df1a9484d0a81d03ce0ee543ab6e1a23ed06175c104a178268fad381216c2b",
+            false,
+            true,
+        );
+        assert!(tx.verify());
+    }
+
+    #[test]
+    fn test_verify_p2pkh() {
+        let mut fetcher = TxFetcher::new();
+        let tx = fetcher.fetch(
+            "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
+            false,
+            true,
+        );
+        assert!(tx.verify());
+        let tx2 = fetcher.fetch(
+            "5418099cc755cb9dd3ebc6cf1a7888ad53a1a3beb5a025bce89eb1bf7f1650a2",
+            true,
+            true,
+        );
+        assert!(tx2.verify());
     }
 }

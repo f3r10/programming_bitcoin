@@ -29,7 +29,7 @@ pub enum OpCodeFunctions {
     OpNot(u32),
     OpSha1(u32),
     OpSigHashAll(u32),
-    OpCheckMultisig(u32)
+    OpCheckMultisig(u32),
 }
 
 impl OpCodeFunctions {
@@ -70,7 +70,7 @@ impl OpCodeFunctions {
     }
 
     pub fn op_checkmultisig() -> Self {
-        OpCodeFunctions::OpCheckMultisig(0xa3)
+        OpCodeFunctions::OpCheckMultisig(0xae)
     }
 }
 
@@ -117,7 +117,7 @@ pub fn parse_raw_op_codes(op_code: u32) -> OpCodeFunctions {
         0x7c => OpCodeFunctions::OpSwap(0x7c),
         0x91 => OpCodeFunctions::OpNot(0x91),
         0xa7 => OpCodeFunctions::OpSha1(0xa7),
-        0xa3 => OpCodeFunctions::OpCheckMultisig(0xa3),
+        0xae => OpCodeFunctions::OpCheckMultisig(0xae),
         unknow => panic!("unknown opCode: {}", unknow),
     }
 }
@@ -143,6 +143,40 @@ pub fn get_op_names(op_code: &OpCodeFunctions) -> &str {
         OpCodeFunctions::OpSigHashAll(_) => "OP_SIG_HASH_ALL",
         OpCodeFunctions::OpCheckMultisig(_) => "OP_CHECKMULTISIG",
     }
+}
+
+pub fn op_hash160(stack: &mut Vec<Vec<u8>>) -> bool {
+    if stack.len() < 1 {
+        return false;
+    }
+    let element = stack.pop().unwrap();
+    stack.push(utils::hash160(&element));
+    return true;
+}
+
+pub fn op_equal(stack: &mut Vec<Vec<u8>>) -> bool {
+    if stack.len() < 2 {
+        return false;
+    }
+    let element1 = stack.pop().unwrap();
+    let element2 = stack.pop().unwrap();
+    if element1 == element2 {
+        stack.push(encode_num(1))
+    } else {
+        stack.push(encode_num(0))
+    }
+    return true;
+}
+
+pub fn op_verify(stack: &mut Vec<Vec<u8>>) -> bool {
+    if stack.len() < 1 {
+        return false;
+    }
+    let element = stack.pop().unwrap();
+    if decode_num(element) == 0 {
+        return false;
+    }
+    return true;
 }
 
 pub fn operation(
@@ -181,31 +215,12 @@ pub fn operation(
             stack.push(stack.last().unwrap().to_vec());
             true
         }
-        OpCodeFunctions::OpHash160(_) => {
-            if stack.len() < 1 {
-                return false;
-            }
-            let element = stack.pop().unwrap();
-            stack.push(utils::hash160(&element));
-            return true;
-        }
+        OpCodeFunctions::OpHash160(_) => op_hash160(stack),
         OpCodeFunctions::OpEqualverify(_) => {
             operation(OpCodeFunctions::op_equal(), stack, cmds, altstack, z)
                 && operation(OpCodeFunctions::op_verify(), stack, cmds, altstack, z)
         }
-        OpCodeFunctions::OpEqual(_) => {
-            if stack.len() < 2 {
-                return false;
-            }
-            let element1 = stack.pop().unwrap();
-            let element2 = stack.pop().unwrap();
-            if element1 == element2 {
-                stack.push(encode_num(1))
-            } else {
-                stack.push(encode_num(0))
-            }
-            return true;
-        }
+        OpCodeFunctions::OpEqual(_) => op_equal(stack),
         OpCodeFunctions::OpHash256(_) => {
             if stack.len() < 1 {
                 return false;
@@ -214,16 +229,7 @@ pub fn operation(
             stack.push(utils::hash256(&element));
             return true;
         }
-        OpCodeFunctions::OpVerify(_) => {
-            if stack.len() < 1 {
-                return false;
-            }
-            let element = stack.pop().unwrap();
-            if decode_num(element) == 0 {
-                return false;
-            }
-            return true;
-        }
+        OpCodeFunctions::OpVerify(_) => op_verify(stack),
         OpCodeFunctions::Op6(_) => {
             stack.push(encode_num(6));
             true
@@ -291,7 +297,7 @@ pub fn operation(
         OpCodeFunctions::OpSigHashAll(_) => todo!(),
         OpCodeFunctions::OpCheckMultisig(_) => {
             if stack.len() < 1 {
-                return false
+                return false;
             }
             let n = decode_num(stack.pop().unwrap()) as usize;
             if stack.len() < n + 1 {
@@ -323,20 +329,19 @@ pub fn operation(
             sec_pubkeys.reverse();
             for sig in der_signatures {
                 if sec_pubkeys.len() == 0 {
-                    return false
+                    return false;
                 }
                 while sec_pubkeys.len() > 0 {
                     let point = sec_pubkeys.pop().unwrap();
                     let check = point.verify(z, sig.clone());
-                    if  check {
+                    if check {
                         break;
                     }
                 }
             }
             stack.push(encode_num(1));
-            return true
-
-        },
+            return true;
+        }
     }
 }
 
@@ -400,7 +405,7 @@ fn decode_num(element: Vec<u8>) -> i32 {
 mod op_tests {
     use crate::{op::decode_num, signature::Signature};
 
-    use super::{encode_num, OpCodeFunctions, operation};
+    use super::{encode_num, operation, OpCodeFunctions};
 
     #[test]
     fn test_encode_num() {
@@ -420,14 +425,27 @@ mod op_tests {
 
     #[test]
     fn test_op_checkmultisig() {
-        let op_code = OpCodeFunctions::op_checkmultisig(); 
-        let z_raw = hex::decode("e71bfa115715d6fd33796948126f40a8cdd39f187e4afb03896795189fe1423c").unwrap();
+        let op_code = OpCodeFunctions::op_checkmultisig();
+        let z_raw = hex::decode("e71bfa115715d6fd33796948126f40a8cdd39f187e4afb03896795189fe1423c")
+            .unwrap();
         let z = Signature::signature_hash_from_vec(z_raw);
         let sig1 = hex::decode("3045022100dc92655fe37036f47756db8102e0d7d5e28b3beb83a8fef4f5dc0559bddfb94e02205a36d4e4e6c7fcd16658c50783e00c341609977aed3ad00937bf4ee942a8993701").unwrap();
         let sig2 = hex::decode("3045022100da6bee3c93766232079a01639d07fa869598749729ae323eab8eef53577d611b02207bef15429dcadce2121ea07f233115c6f09034c0be68db99980b9a6c5e75402201").unwrap();
-        let sec1 = hex::decode("022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb70").unwrap();
-        let sec2 = hex::decode("03b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb71").unwrap();
-        let mut stack = vec![[0_u8].to_vec(), sig1, sig2, [2_u8].to_vec(), sec1, sec2, [2_u8].to_vec()];
+        let sec1 =
+            hex::decode("022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb70")
+                .unwrap();
+        let sec2 =
+            hex::decode("03b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb71")
+                .unwrap();
+        let mut stack = vec![
+            [0_u8].to_vec(),
+            sig1,
+            sig2,
+            [2_u8].to_vec(),
+            sec1,
+            sec2,
+            [2_u8].to_vec(),
+        ];
         let mut cmds = Vec::new();
         let mut altstack = Vec::new();
         let res = operation(op_code, &mut stack, &mut cmds, &mut altstack, &z);

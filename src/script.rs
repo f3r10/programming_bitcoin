@@ -1,12 +1,17 @@
 use core::panic;
-use std::{fmt::Display, io::Read, ops::Add, vec};
+use std::{
+    fmt::Display,
+    io::{Cursor, Read},
+    ops::Add,
+    vec,
+};
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
 use crate::{
     op::{self, OpCodeFunctions},
     signature::SignatureHash,
-    utils,
+    utils::{self, encode_varint},
 };
 
 #[derive(Debug, Clone)]
@@ -78,6 +83,25 @@ impl Script {
         Script { cmds }
     }
 
+    pub fn is_p2sh_script_pubkey(&self) -> bool {
+        let cmds_copy = self.cmds.clone();
+        let pattern1 = cmds_copy.len() == 3;
+        let pattern2 = match &cmds_copy[0] {
+            Command::Element(_) => false,
+            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
+        };
+        let pattern3_4 = match &cmds_copy[1] {
+            Command::Element(bytes) => bytes.len() == 20,
+            Command::Operation(_) => false,
+        };
+        let pattern5 = match &cmds_copy[2] {
+            Command::Element(_) => false,
+            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
+        };
+
+        pattern1 && pattern2 && pattern3_4 & pattern5
+    }
+
     pub fn evaluate(self, z: SignatureHash) -> bool {
         let mut cmds_copy = self.cmds.clone();
         let mut stack: Vec<Vec<u8>> = Vec::new();
@@ -85,7 +109,34 @@ impl Script {
         while cmds_copy.len() > 0 {
             let cmd = cmds_copy.remove(0);
             match cmd {
-                Command::Element(elem) => stack.push(elem.to_vec()),
+                Command::Element(elem) => {
+                    stack.push(elem.to_vec());
+                    if self.is_p2sh_script_pubkey() {
+                        cmds_copy.pop().unwrap(); //this is op_hash160
+                        let h160 = match cmds_copy.pop().unwrap() {
+                            Command::Element(elem) => elem,
+                            Command::Operation(_) => {
+                                panic!("invalid state after checking for redeemscript")
+                            }
+                        };
+                        cmds_copy.pop().unwrap(); //this is op_equal
+                        if !op::op_hash160(&mut stack) {
+                            return false;
+                        }
+                        stack.push(h160);
+                        if !op::op_equal(&mut stack) {
+                            return false;
+                        }
+
+                        if !op::op_verify(&mut stack) {
+                            return false;
+                        }
+                        let redeem_script = vec![encode_varint(elem.len()), elem].concat();
+                        let mut stream = Cursor::new(redeem_script);
+                        let mut checkmultisigcmds = Script::parse(&mut stream).cmds;
+                        cmds_copy.append(&mut checkmultisigcmds)
+                    }
+                }
                 Command::Operation(op_code) => {
                     let result = op::operation(
                         op_code.clone(),

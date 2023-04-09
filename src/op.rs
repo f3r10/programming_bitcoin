@@ -30,6 +30,8 @@ pub enum OpCodeFunctions {
     OpSha1(u32),
     OpSigHashAll(u32),
     OpCheckMultisig(u32),
+    OpNop(u32),
+    OpUnknown(u32)
 }
 
 impl OpCodeFunctions {
@@ -95,6 +97,8 @@ impl AsRef<u32> for OpCodeFunctions {
             OpCodeFunctions::OpSha1(op) => op,
             OpCodeFunctions::OpSigHashAll(op) => op,
             OpCodeFunctions::OpCheckMultisig(op) => op,
+            OpCodeFunctions::OpNop(op) => op,
+            OpCodeFunctions::OpUnknown(op) => op,
         }
     }
 }
@@ -118,30 +122,32 @@ pub fn parse_raw_op_codes(op_code: u32) -> OpCodeFunctions {
         0x91 => OpCodeFunctions::OpNot(0x91),
         0xa7 => OpCodeFunctions::OpSha1(0xa7),
         0xae => OpCodeFunctions::OpCheckMultisig(0xae),
-        unknow => panic!("unknown opCode: {}", unknow),
+        unknow => OpCodeFunctions::OpUnknown(unknow),
     }
 }
 
-pub fn get_op_names(op_code: &OpCodeFunctions) -> &str {
+pub fn get_op_names(op_code: &OpCodeFunctions) -> String {
     match op_code {
-        OpCodeFunctions::Op0(_) => "OP_0",
-        OpCodeFunctions::OpChecksig(_) => "OP_CHECK_SIG",
-        OpCodeFunctions::OpDup(_) => "OP_DUP",
-        OpCodeFunctions::OpHash160(_) => "OP_HASH_160",
-        OpCodeFunctions::OpHash256(_) => "OP_HASH_256",
-        OpCodeFunctions::OpEqualverify(_) => "OP_EQUAL_VERIFY",
-        OpCodeFunctions::OpEqual(_) => "OP_EQUAL",
-        OpCodeFunctions::OpVerify(_) => "OP_VERIFY",
-        OpCodeFunctions::Op6(_) => "OP_6",
-        OpCodeFunctions::OpAdd(_) => "OP_ADD",
-        OpCodeFunctions::OpMul(_) => "OP_MUL",
-        OpCodeFunctions::Op2(_) => "OP_2",
-        OpCodeFunctions::Op2dup(_) => "OP_2_DUP",
-        OpCodeFunctions::OpSwap(_) => "OP_SWAP",
-        OpCodeFunctions::OpNot(_) => "OP_NOT",
-        OpCodeFunctions::OpSha1(_) => "OP_SHA1",
-        OpCodeFunctions::OpSigHashAll(_) => "OP_SIG_HASH_ALL",
-        OpCodeFunctions::OpCheckMultisig(_) => "OP_CHECKMULTISIG",
+        OpCodeFunctions::Op0(_) => "OP_0".to_string(),
+        OpCodeFunctions::OpChecksig(_) => "OP_CHECK_SIG".to_string(),
+        OpCodeFunctions::OpDup(_) => "OP_DUP".to_string(),
+        OpCodeFunctions::OpHash160(_) => "OP_HASH_160".to_string(),
+        OpCodeFunctions::OpHash256(_) => "OP_HASH_256".to_string(),
+        OpCodeFunctions::OpEqualverify(_) => "OP_EQUAL_VERIFY".to_string(),
+        OpCodeFunctions::OpEqual(_) => "OP_EQUAL".to_string(),
+        OpCodeFunctions::OpVerify(_) => "OP_VERIFY".to_string(),
+        OpCodeFunctions::Op6(_) => "OP_6".to_string(),
+        OpCodeFunctions::OpAdd(_) => "OP_ADD".to_string(),
+        OpCodeFunctions::OpMul(_) => "OP_MUL".to_string(),
+        OpCodeFunctions::Op2(_) => "OP_2".to_string(),
+        OpCodeFunctions::Op2dup(_) => "OP_2_DUP".to_string(),
+        OpCodeFunctions::OpSwap(_) => "OP_SWAP".to_string(),
+        OpCodeFunctions::OpNot(_) => "OP_NOT".to_string(),
+        OpCodeFunctions::OpSha1(_) => "OP_SHA1".to_string(),
+        OpCodeFunctions::OpSigHashAll(_) => "OP_SIG_HASH_ALL".to_string(),
+        OpCodeFunctions::OpCheckMultisig(_) => "OP_CHECKMULTISIG".to_string(),
+        OpCodeFunctions::OpNop(_) => "OP_NOP".to_string(),
+        OpCodeFunctions::OpUnknown(op) => op.to_string(),
     }
 }
 
@@ -342,6 +348,8 @@ pub fn operation(
             stack.push(encode_num(1));
             return true;
         }
+        OpCodeFunctions::OpNop(_) => return true,
+        OpCodeFunctions::OpUnknown(_) => return false,
     }
 }
 

@@ -43,7 +43,7 @@ impl Script {
             let mut current = vec![0; 1];
             stream.read_exact(&mut current).unwrap();
             count += 1;
-            let current_byte = BigEndian::read_int(&current, 1) as u32;
+            let current_byte = current[0] as u32;
             if current_byte >= 1 && current_byte <= 75 {
                 let mut temp = vec![0; current_byte.try_into().unwrap()];
                 stream.read_exact(&mut temp).unwrap();
@@ -69,9 +69,7 @@ impl Script {
                 cmds.push(elem);
                 count += data_length + 2;
             } else {
-                let mut num = vec![0, 0, 0];
-                num.append(&mut current.clone());
-                let op_code = op::parse_raw_op_codes(BigEndian::read_u32(&num));
+                let op_code = op::parse_raw_op_codes(current_byte);
                 let op = Command::Operation(op_code);
                 cmds.push(op);
             }
@@ -229,7 +227,9 @@ impl Add for Script {
 mod script_tests {
     use std::io::Cursor;
 
-    use crate::{op, signature::Signature};
+    use num_bigint::BigInt;
+
+    use crate::{op, signature::Signature, utils};
 
     use super::{Command, Script};
 
@@ -267,5 +267,28 @@ mod script_tests {
         let script_sig = Script::new(Some(vec![Command::Element(sig_encode)]));
         let combined_script = script_sig + script_pubkey;
         assert!(combined_script.evaluate(z))
+    }
+
+    #[test]
+    fn test_parse_scriptsig_genesis_coinbase_tx() {
+        let raw_scriptsig = hex::decode("4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73").unwrap();
+        let mut stream = Cursor::new(raw_scriptsig);
+        let s = Script::parse(&mut stream);
+        let a = match &s.cmds[2]{
+            Command::Element(r) => String::from_utf8(r.to_vec()).unwrap(),
+            Command::Operation(_) => "Op".to_string(),
+        };
+        assert_eq!("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks", a)
+    }
+
+    #[test]
+    fn test_parse_scriptsig_coinbase_tx() {
+        let raw_scriptsig = hex::decode("5e03d71b07254d696e656420627920416e74506f6f6c20626a31312f4542312f4144362f43205914293101fabe6d6d678e2c8c34afc36896e7d9402824ed38e856676ee94bfdb0c6c4bcd8b2e5666a0400000000000000c7270000a5e00e00").unwrap();
+        let mut stream = Cursor::new(raw_scriptsig);
+        let s = Script::parse(&mut stream);
+        match &s.cmds[0]{
+            Command::Element(v) => assert_eq!(BigInt::from(465879), utils::little_endian_to_int(v)),
+            Command::Operation(_) => assert!(false),
+        }
     }
 }

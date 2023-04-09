@@ -230,6 +230,20 @@ impl Tx {
         self.tx_ins[input_index].script_sig = Some(script_sig);
         self.verify_input(input_index)
     }
+
+    pub fn is_coinbase(&self) -> bool {
+        if self.tx_ins.len() > 1 {
+            return false
+        }
+        let tx_in = &self.tx_ins[0];
+        if tx_in.prev_tx  != [0_u8; 32] {
+            return false
+        }
+        if tx_in.prev_index != BigInt::parse_bytes(b"ffffffff", 16).unwrap()  {
+            return false
+        }
+        true
+    }
 }
 
 impl Display for Tx {
@@ -621,5 +635,13 @@ mod tx_tests {
             true,
         );
         assert!(tx2.verify());
+    }
+
+    #[test]
+    fn test_is_coinbase() {
+        let raw_tx = hex::decode("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff5e03d71b07254d696e656420627920416e74506f6f6c20626a31312f4542312f4144362f43205914293101fabe6d6d678e2c8c34afc36896e7d9402824ed38e856676ee94bfdb0c6c4bcd8b2e5666a0400000000000000c7270000a5e00e00ffffffff01faf20b58000000001976a914338c84849423992471bffb1a54a8d9b1d69dc28a88ac00000000").unwrap();
+        let mut stream = Cursor::new(raw_tx);
+        let tx = Tx::parse(&mut stream, false);
+        assert!(tx.is_coinbase())
     }
 }

@@ -16,6 +16,7 @@ pub mod signature;
 pub mod tx;
 pub mod tx_fetcher;
 pub mod utils;
+pub mod block;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

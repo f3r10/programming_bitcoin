@@ -3,7 +3,7 @@ use std::{
     io::{Cursor, Read, Seek},
 };
 
-use byteorder::{BigEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use num_bigint::BigInt;
 
 use crate::{
@@ -15,35 +15,36 @@ use crate::{
     utils,
 };
 
+
 #[derive(Debug, Clone)]
 pub struct TxOut {
-    pub amount: BigInt,
+    pub amount: u64, // TODO change u64
     pub script_pubkey: Script,
 }
 
 #[derive(Debug, Clone)]
 pub struct TxIn {
     pub prev_tx: Vec<u8>,
-    pub prev_index: BigInt,
+    pub prev_index: u32,
     pub script_sig: Option<Script>,
-    pub sequence: Option<BigInt>,
+    pub sequence: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Tx {
-    pub version: BigInt,
+    pub version: u32,
     pub tx_ins: Vec<TxIn>,
     pub tx_outs: Vec<TxOut>,
-    pub locktime: BigInt,
+    pub locktime: u32,
     pub testnet: bool,
 }
 
 impl Tx {
     pub fn new(
-        version: BigInt,
+        version: u32,
         tx_ins: Vec<TxIn>,
         tx_outs: Vec<TxOut>,
-        locktime: BigInt,
+        locktime: u32,
         testnet: bool,
     ) -> Self {
         Tx {
@@ -60,7 +61,7 @@ impl Tx {
 
         let mut handle = stream.take(4);
         handle.read(&mut buffer).unwrap();
-        let version = utils::little_endian_to_int(&buffer);
+        let version = LittleEndian::read_u32(&buffer); // utils::little_endian_to_int(&amount_buffer);
         let pos = stream.stream_position().unwrap();
 
         // The next two bytes represents if the TX is segwit
@@ -87,7 +88,7 @@ impl Tx {
         }
         let mut locktime_buffer = [0; 4];
         stream.read_exact(&mut locktime_buffer).unwrap();
-        let locktime = utils::little_endian_to_int(&locktime_buffer);
+        let locktime = LittleEndian::read_u32(&locktime_buffer);
         Tx {
             version,
             tx_ins: inputs,
@@ -99,7 +100,7 @@ impl Tx {
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut result: Vec<Vec<u8>> = Vec::new();
-        result.push(utils::int_to_little_endian(&self.version, 4));
+        result.push(self.version.to_le_bytes().to_vec());
         result.push(utils::encode_varint(self.tx_ins.len()));
         for tx_in in &self.tx_ins {
             let intx = tx_in.serialize();
@@ -110,7 +111,7 @@ impl Tx {
             let outx = tx_out.serialize();
             result.push(outx)
         }
-        result.push(utils::int_to_little_endian(&self.locktime, 4));
+        result.push(self.locktime.to_le_bytes().to_vec());
         result.concat()
     }
 
@@ -128,7 +129,7 @@ impl Tx {
     }
 
     pub fn sig_hash(&self, input_index: usize, redeem_script: Option<Script>) -> BigInt {
-        let mut s = utils::int_to_little_endian(&self.version, 4);
+        let mut s = self.version.to_le_bytes().to_vec();
         s.append(&mut utils::encode_varint(self.tx_ins.len()));
         for (i, tx_in) in self.tx_ins.iter().enumerate() {
             let script_sig: Option<Script>;
@@ -154,7 +155,7 @@ impl Tx {
         for tx_out in &self.tx_outs {
             s.append(&mut tx_out.clone().serialize())
         }
-        s.append(&mut utils::int_to_little_endian(&self.locktime, 4));
+        s.append(&mut self.locktime.to_le_bytes().to_vec());
         s.append(&mut utils::u32_to_little_endian(
             *OpCodeFunctions::op_sig_hash_all().as_ref(),
             4,
@@ -239,7 +240,7 @@ impl Tx {
         if tx_in.prev_tx  != [0_u8; 32] {
             return false
         }
-        if tx_in.prev_index != BigInt::parse_bytes(b"ffffffff", 16).unwrap()  {
+        if tx_in.prev_index != 0xffffffff {
             return false
         }
         true
@@ -284,9 +285,9 @@ impl Display for Tx {
 impl TxIn {
     pub fn new(
         prev_tx: Vec<u8>,
-        prev_index: BigInt,
+        prev_index: u32,
         script_sig: Option<Script>,
-        sequence: Option<BigInt>,
+        sequence: Option<u32>,
     ) -> Self {
         TxIn {
             prev_tx,
@@ -302,11 +303,11 @@ impl TxIn {
         prev_tx_buffer.reverse(); // because is little endian
         let mut prev_tx_index_buffer = [0; 4];
         stream.read_exact(&mut prev_tx_index_buffer).unwrap();
-        let prev_index = utils::little_endian_to_int(&prev_tx_index_buffer);
+        let prev_index = LittleEndian::read_u32(&prev_tx_index_buffer);
         let script_sig = Script::parse(stream);
         let mut sequence_buffer = [0; 4];
         stream.read_exact(&mut sequence_buffer).unwrap();
-        let sequence = utils::little_endian_to_int(&sequence_buffer);
+        let sequence = LittleEndian::read_u32(&sequence_buffer);
         TxIn {
             prev_tx: prev_tx_buffer.to_vec(),
             prev_index,
@@ -320,13 +321,13 @@ impl TxIn {
         let mut prev_tx = self.prev_tx.clone();
         prev_tx.reverse();
         result.push(prev_tx);
-        result.push(utils::int_to_little_endian(&self.prev_index, 4));
+        result.push(self.prev_index.to_le_bytes().to_vec());
         match &self.script_sig {
             Some(script_sig) => result.push(script_sig.serialize()),
             None => result.push([0].to_vec()),
         };
         match self.sequence.as_ref() {
-            Some(s) => result.push(utils::int_to_little_endian(s, 4)),
+            Some(s) => result.push(s.to_le_bytes().to_vec()),
             None => result.push(utils::u32_to_little_endian(0xffffffff, 4)),
         }
         result.concat()
@@ -337,18 +338,16 @@ impl TxIn {
         tx_fetcher.fetch(&hex::encode(self.prev_tx.clone()), testnet, false)
     }
 
-    pub fn value(&self, testnet: bool) -> BigInt {
+    pub fn value(&self, testnet: bool) -> u64 {
         let tx = self.fetch_tx(testnet);
-        let index_buf = self.prev_index.to_signed_bytes_be();
-        let index = BigEndian::read_int(&index_buf, index_buf.len()) as usize;
+        let index = self.prev_index as usize;
         tx.tx_outs[index].amount.clone()
     }
 
     /// Fetch the TX
     pub fn script_pubkey(&self, testnet: bool) -> Script {
         let tx = self.fetch_tx(testnet);
-        let index_buf = self.prev_index.to_signed_bytes_be();
-        let index = BigEndian::read_int(&index_buf, index_buf.len()) as usize;
+        let index = self.prev_index as usize;
         tx.tx_outs[index].script_pubkey.clone()
     }
 }
@@ -365,7 +364,7 @@ impl Display for TxIn {
 }
 
 impl TxOut {
-    pub fn new(amount: BigInt, script_pubkey: Script) -> Self {
+    pub fn new(amount: u64, script_pubkey: Script) -> Self {
         TxOut {
             amount,
             script_pubkey,
@@ -375,7 +374,7 @@ impl TxOut {
     pub fn parse<R: Read>(stream: &mut R) -> Self {
         let mut amount_buffer = [0; 8];
         stream.read_exact(&mut amount_buffer).unwrap();
-        let amount = utils::little_endian_to_int(&amount_buffer);
+        let amount = LittleEndian::read_u64(&amount_buffer); // utils::little_endian_to_int(&amount_buffer);
         let script_pubkey = Script::parse(stream);
         TxOut {
             amount,
@@ -385,7 +384,7 @@ impl TxOut {
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut result: Vec<Vec<u8>> = Vec::new();
-        result.push(utils::int_to_little_endian(&self.amount, 8));
+        result.push(self.amount.to_le_bytes().to_vec());
         result.push(self.script_pubkey.serialize());
         result.concat()
     }
@@ -417,13 +416,21 @@ mod tx_tests {
     use super::Tx;
 
     #[test]
+    fn test_tx_version() {
+        let raw_tx = hex::decode("0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600").unwrap();
+        let mut stream = Cursor::new(raw_tx);
+        let tx = Tx::parse(&mut stream, false);
+        assert_eq!(tx.version, 1)
+    }
+
+    #[test]
     fn test_parse_inputs() {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx).unwrap();
         let mut cursor_tx = Cursor::new(tx_encode);
         let tx = Tx::parse(&mut cursor_tx, false);
         assert_eq!(tx.tx_ins.len(), 1);
-        assert_eq!(tx.tx_ins[0].prev_index, BigInt::from(0));
+        assert_eq!(tx.tx_ins[0].prev_index, 0);
         assert_eq!(
             hex::encode(tx.tx_ins[0].prev_tx.clone()),
             "d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81"
@@ -431,7 +438,7 @@ mod tx_tests {
         assert_eq!(hex::encode(tx.tx_ins[0].script_sig.clone().unwrap().serialize()), "6b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278a");
         assert_eq!(
             tx.tx_ins[0].sequence.clone().unwrap(),
-            BigInt::from(0xfffffffe_u32)
+            0xfffffffe_u32
         );
     }
 
@@ -442,12 +449,12 @@ mod tx_tests {
         let mut cursor_tx = Cursor::new(tx_encode);
         let tx = Tx::parse(&mut cursor_tx, false);
         assert_eq!(tx.tx_outs.len(), 2);
-        assert_eq!(tx.tx_outs[0].amount, BigInt::from(32454049));
+        assert_eq!(tx.tx_outs[0].amount, 32454049_u64);
         assert_eq!(
             hex::encode(tx.tx_outs[0].script_pubkey.serialize()),
             "1976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac"
         );
-        assert_eq!(tx.tx_outs[1].amount, BigInt::from(10011545));
+        assert_eq!(tx.tx_outs[1].amount, 10011545_u64);
         assert_eq!(
             hex::encode(tx.tx_outs[1].script_pubkey.serialize()),
             "1976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac"
@@ -460,7 +467,7 @@ mod tx_tests {
         let tx_encode = hex::decode(tx).unwrap();
         let mut cursor_tx = Cursor::new(tx_encode);
         let tx = Tx::parse(&mut cursor_tx, false);
-        assert_eq!(tx.locktime, BigInt::from(410393));
+        assert_eq!(tx.locktime, 410393);
     }
 
     #[test]
@@ -481,7 +488,7 @@ mod tx_tests {
         //TODO add these tests when Script has a display impl
         // assert_eq!("304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a71601035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937", hex::encode(tx_parsed.tx_ins[1].script_sig));
         // assert_eq!("", hex::encode(tx_parsed.tx_outs[0].script_pubkey.serialize()));
-        assert_eq!(BigInt::from(40000000), tx_parsed.tx_outs[1].amount);
+        assert_eq!(40000000_u64, tx_parsed.tx_outs[1].amount);
     }
 
     #[test]
@@ -582,11 +589,11 @@ mod tx_tests {
         let prev_tx_faucet =
             hex::decode("177546b0d70663917f9dbe3dc6ddf05289d0a43d6cd721bf79f62581bc75a1cc")
                 .unwrap();
-        let prev_tx_faucet_index = BigInt::from(0);
+        let prev_tx_faucet_index = 0;
         let prev_tx_ex4 =
             hex::decode("3fd155536987271e0f94358e9fa2e135bb620981ea8dbe8e60645d0daa2ffe3b")
                 .unwrap();
-        let prev_tx_ex4_index = BigInt::from(1);
+        let prev_tx_ex4_index = 1;
         let target_address = "mzzLk9MmXzmjCBLgjoeNDxrbdrt511t5Gm";
         let target_amount = 0.01728903;
         let secret = "f3r10@programmingblockchain.com my secret";
@@ -597,9 +604,9 @@ mod tx_tests {
         let mut tx_outs: Vec<TxOut> = Vec::new();
         let h160 = utils::decode_base58(target_address);
         let script_pubkey = utils::p2pkh_script(h160);
-        let target_satoshis = BigInt::from((target_amount * 100_000_000_f64) as u64);
+        let target_satoshis = (target_amount * 100_000_000_f64) as u64;
         tx_outs.push(TxOut::new(target_satoshis, script_pubkey));
-        let mut tx_obj = Tx::new(BigInt::from(1), tx_ins, tx_outs, BigInt::from(0), true);
+        let mut tx_obj = Tx::new(1, tx_ins, tx_outs, 0, true);
         // each may have different private keys to unlock the ScriptPubKey
         assert!(tx_obj.sign_input(0, priva.clone()));
         assert!(tx_obj.sign_input(1, priva.clone()));

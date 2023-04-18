@@ -3,6 +3,7 @@ use std::{collections::HashMap, io::Cursor};
 use serde::Deserialize;
 
 use crate::tx::Tx;
+use anyhow::Result;
 
 pub struct TxFetcher {
     cache: HashMap<String, Tx>,
@@ -29,18 +30,18 @@ impl TxFetcher {
         }
     }
 
-    pub fn fetch(&mut self, tx_id: &str, testnet: bool, fresh: bool) -> Tx {
+    pub fn fetch(&mut self, tx_id: &str, testnet: bool, fresh: bool) -> Result<Tx> {
         if fresh || !self.cache.contains_key(tx_id) {
             let url = format!(
                 "{}/txs/{}?includeHex=true",
                 TxFetcher::get_url(testnet),
                 tx_id
             );
-            let res = reqwest::blocking::get(url).unwrap();
-            let tx_remote: TxRemote = res.json().unwrap();
-            let hex_decode = hex::decode(tx_remote.hex).unwrap();
+            let res = reqwest::blocking::get(url)?;
+            let tx_remote: TxRemote = res.json()?;
+            let hex_decode = hex::decode(tx_remote.hex)?;
             let mut reader = Cursor::new(hex_decode);
-            let tx = Tx::parse(&mut reader, testnet);
+            let tx = Tx::parse(&mut reader, testnet)?;
             if tx_remote.hash != tx_id {
                 panic!("not the same id")
             }
@@ -49,7 +50,7 @@ impl TxFetcher {
         match self.cache.get_mut(&tx_id.to_string()) {
             Some(tx) => {
                 tx.testnet = testnet;
-                tx.clone()
+                Ok(tx.clone())
             }
             None => panic!("tx not present"),
         }

@@ -113,17 +113,17 @@ impl Add for PointWrapper<FiniteField> {
                         b: b1.clone(),
                     };
                 } else if p1 == p2
-                    && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime)
+                    && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime).unwrap()
                 {
                     PointWrapper::Inf
                 } else if p1 == p2 {
-                    let s = (FiniteField::new_big_int(BigInt::from(3), x1.clone().prime)
+                    let s = (FiniteField::new_big_int(BigInt::from(3), x1.clone().prime).unwrap()
                         * x1.clone().pow(BigInt::from(2))
                         + a1.clone())
-                        / (FiniteField::new_big_int(BigInt::from(2), x1.clone().prime)
+                        / (FiniteField::new_big_int(BigInt::from(2), x1.clone().prime).unwrap()
                             * y1.clone());
                     let x = s.pow(BigInt::from(2))
-                        - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime) * x1.clone();
+                        - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime).unwrap() * x1.clone();
                     let y = s * (x1.clone() - x.clone()) - y1.clone();
                     return PointWrapper::Point {
                         x,
@@ -178,6 +178,7 @@ impl Mul<PointWrapper<FiniteField>> for BigInt {
 #[cfg(test)]
 mod point_finite_field_test {
     use crate::{finite_field::FiniteField, PointWrapper};
+    use anyhow::Result;
 
     struct TestPoint {
         p1: (i32, i32),
@@ -186,34 +187,35 @@ mod point_finite_field_test {
     }
 
     #[test]
-    fn test_on_curve() -> Result<(), String> {
+    fn test_on_curve() -> Result<()> {
         let prime = 223;
-        let a = FiniteField::new(0, prime);
-        let b = FiniteField::new(7, prime);
+        let a = FiniteField::new(0, prime)?;
+        let b = FiniteField::new(7, prime)?;
         let valid_points = vec![(192, 105), (17, 56), (1, 193)];
         for (x_raw, y_raw) in valid_points {
-            let x = FiniteField::new(x_raw, prime);
-            let y = FiniteField::new(y_raw, prime);
+            let x = FiniteField::new(x_raw, prime)?;
+            let y = FiniteField::new(y_raw, prime)?;
             PointWrapper::new(x, y, a.clone(), b.clone());
         }
         Ok(())
     }
 
     #[test]
-    fn test_no_on_curve() {
+    fn test_no_on_curve() -> Result<()> {
         let prime = 223;
-        let a = FiniteField::new(0, prime);
-        let b = FiniteField::new(7, prime);
+        let a = FiniteField::new(0, prime)?;
+        let b = FiniteField::new(7, prime)?;
         let invalid_points = vec![(200, 119), (42, 99)];
         for (x_raw, y_raw) in invalid_points {
-            let x = FiniteField::new(x_raw, prime);
-            let y = FiniteField::new(y_raw, prime);
+            let x = FiniteField::new(x_raw, prime)?;
+            let y = FiniteField::new(y_raw, prime)?;
             let result = std::panic::catch_unwind(|| PointWrapper::new(x, y, a.clone(), b.clone()));
             assert!(result.is_err())
-        }
+        };
+        Ok(())
     }
     #[test]
-    fn test_add() {
+    fn test_add() -> Result<()> {
         let test_points = vec![
             TestPoint {
                 p1: (170, 142),
@@ -238,54 +240,55 @@ mod point_finite_field_test {
         ];
         for p in test_points {
             let prime = 223;
-            let a = FiniteField::new(0, prime);
-            let b = FiniteField::new(7, prime);
-            let x1 = FiniteField::new(p.p1.0, prime);
-            let y1 = FiniteField::new(p.p1.1, prime);
-            let x2 = FiniteField::new(p.p2.0, prime);
-            let y2 = FiniteField::new(p.p2.1, prime);
+            let a = FiniteField::new(0, prime)?;
+            let b = FiniteField::new(7, prime)?;
+            let x1 = FiniteField::new(p.p1.0, prime)?;
+            let y1 = FiniteField::new(p.p1.1, prime)?;
+            let x2 = FiniteField::new(p.p2.0, prime)?;
+            let y2 = FiniteField::new(p.p2.1, prime)?;
             let p1 = PointWrapper::new(x1, y1, a.clone(), b.clone());
             let p2 = PointWrapper::new(x2, y2, a.clone(), b.clone());
-            let x_res = FiniteField::new(p.res.0, prime);
-            let y_res = FiniteField::new(p.res.1, prime);
+            let x_res = FiniteField::new(p.res.0, prime)?;
+            let y_res = FiniteField::new(p.res.1, prime)?;
             let p_res = PointWrapper::new(x_res, y_res, a, b);
             assert_eq!(p_res, p1 + p2)
-        }
+        };
+        Ok(())
     }
     #[test]
-    fn test_mul_binary_expansion() {
+    fn test_mul_binary_expansion() -> Result<()>{
         let prime = 223;
-        let a = FiniteField::new(0, prime);
-        let b = FiniteField::new(7, prime);
+        let a = FiniteField::new(0, prime)?;
+        let b = FiniteField::new(7, prime)?;
         let p5 = PointWrapper::new(
-            FiniteField::new(15, prime),
-            FiniteField::new(86, prime),
+            FiniteField::new(15, prime)?,
+            FiniteField::new(86, prime)?,
             a.clone(),
             b.clone(),
         );
         assert_eq!(PointWrapper::new_inf(), 7 * p5);
         let p5 = PointWrapper::new(
-            FiniteField::new(47, prime),
-            FiniteField::new(71, prime),
+            FiniteField::new(47, prime)?,
+            FiniteField::new(71, prime)?,
             a.clone(),
             b.clone(),
         );
 
         let res8 = PointWrapper::new(
-            FiniteField::new(116, prime),
-            FiniteField::new(55, prime),
+            FiniteField::new(116, prime)?,
+            FiniteField::new(55, prime)?,
             a.clone(),
             b.clone(),
         );
         let res4 = PointWrapper::new(
-            FiniteField::new(194, prime),
-            FiniteField::new(51, prime),
+            FiniteField::new(194, prime)?,
+            FiniteField::new(51, prime)?,
             a.clone(),
             b.clone(),
         );
         let res2 = PointWrapper::new(
-            FiniteField::new(36, prime),
-            FiniteField::new(111, prime),
+            FiniteField::new(36, prime)?,
+            FiniteField::new(111, prime)?,
             a.clone(),
             b.clone(),
         );
@@ -293,5 +296,6 @@ mod point_finite_field_test {
         assert_eq!(res4, 4 * p5.clone());
         assert_eq!(res8, 8 * p5.clone());
         assert_eq!(PointWrapper::new_inf(), 21 * p5.clone());
+        Ok(())
     }
 }

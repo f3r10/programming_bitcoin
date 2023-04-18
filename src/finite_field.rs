@@ -4,6 +4,7 @@ use std::{
 };
 
 use num_bigint::BigInt;
+use anyhow::{Result, bail};
 
 #[derive(Debug, Clone, Eq)]
 pub struct FiniteField {
@@ -12,21 +13,21 @@ pub struct FiniteField {
 }
 
 impl FiniteField {
-    pub fn new(num: i32, prime: i32) -> Self {
+    pub fn new(num: i32, prime: i32) -> Result<Self> {
         if num >= prime {
-            panic!("Num {} not in field range 0 to {}", num, prime);
+            bail!("Num {} not in field range 0 to {}", num, prime);
         }
-        FiniteField {
+        Ok(FiniteField {
             num: BigInt::from(num),
             prime: BigInt::from(prime),
-        }
+        })
     }
 
-    pub fn new_big_int(num: BigInt, prime: BigInt) -> Self {
+    pub fn new_big_int(num: BigInt, prime: BigInt) -> Result<Self> {
         if num >= prime {
-            panic!("Num {} not in field range 0 to {}", num, prime);
+            bail!("Num {} not in field range 0 to {}", num, prime);
         }
-        FiniteField { num, prime }
+        Ok(FiniteField { num, prime })
     }
 
     pub fn pow(&self, exponent: BigInt) -> Self {

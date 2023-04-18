@@ -12,6 +12,7 @@ pub struct PrivateKey {
     pub point: S256Point,
 }
 
+use anyhow::{Result, bail};
 pub struct PrivateKeySecret(BigInt);
 
 impl AsRef<BigInt> for PrivateKeySecret {
@@ -21,34 +22,45 @@ impl AsRef<BigInt> for PrivateKeySecret {
 }
 
 impl PrivateKey {
-    pub fn new(secret: &PrivateKeySecret) -> Self {
-        let point = secret.as_ref() * &G.to_owned();
+    pub fn new(secret: &PrivateKeySecret) -> Result<Self> {
+        let g = match G.as_ref(){
+            Ok(it) => it,
+            Err(_) => bail!("unable to get G"),
+        };
+        let point = secret.as_ref() * g;
         let point = S256Point { point };
-        PrivateKey {
+        Ok(PrivateKey {
             secret: secret.as_ref().clone(),
             point,
-        }
+        })
     }
 
     pub fn hex(&self) -> String {
         format!("{:#064x}", self.secret)
     }
 
-    pub fn sign(&self, z: &SignatureHash, ks: Option<BigInt>) -> Signature {
+    pub fn sign(&self, z: &SignatureHash, ks: Option<BigInt>) -> Result<Signature> {
         //TODO DANGER Some(ks) it just for test purposes
         let k = match ks {
             Some(v) => v,
-            None => self.deterministic_k(z),
+            None => self.deterministic_k(z)?,
         };
-        let n = N.to_owned();
-        let r = match k.clone() * &G.to_owned() {
+        let n = match N.as_ref() {
+            Ok(it) => it,
+            Err(_) => bail!("unable to get N"),
+        };
+        let g = match G.as_ref(){
+            Ok(it) => it,
+            Err(_) => bail!("unable to get G"),
+        };
+        let r = match k.clone() * g {
             PointWrapper::Point {
                 x,
                 y: _,
                 a: _,
                 b: _,
             } => x.num,
-            PointWrapper::Inf => panic!("R point should not be point to infity"),
+            PointWrapper::Inf => bail!("R point should not be point to infity"),
         };
         let k_inv = k.modpow(&(n.clone() - 2), &n);
         let mut s =
@@ -56,19 +68,22 @@ impl PrivateKey {
         if s > n.clone() / 2 {
             s = n - s
         }
-        Signature::new(r, s)
+        Ok(Signature::new(r, s))
     }
 
-    pub fn deterministic_k(&self, z: &SignatureHash) -> BigInt {
+    pub fn deterministic_k(&self, z: &SignatureHash) -> Result<BigInt> {
         let mut k = vec![0_u8; 32];
         let mut v = vec![1_u8; 32];
         let mut z = z.as_ref().clone();
-        let n = N.to_owned();
-        if z > n {
+        let n = match N.as_ref() {
+            Ok(it) => it,
+            Err(_) => bail!("unable to get N"),
+        };
+        if z > n.clone() {
             z -= n.clone()
         }
-        let z_bytes = utils::int_to_big_endian(&z, 32);
-        let secret_bytes = utils::int_to_big_endian(&self.secret, 32);
+        let z_bytes = utils::int_to_big_endian(&z, 32)?;
+        let secret_bytes = utils::int_to_big_endian(&self.secret, 32)?;
         let s256 = Sha256::new();
         let mut kmac = hmac::Hmac::new(s256, &k[..]);
         kmac.input(&[&v[..], &[0_u8], &secret_bytes, &z_bytes].concat());
@@ -88,7 +103,7 @@ impl PrivateKey {
             vmac.input(&v);
             vmac.raw_result(&mut v);
             candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, &v);
-            if candidate >= BigInt::from(1) && candidate < n {
+            if candidate >= BigInt::from(1) && candidate < n.clone() {
                 break;
             }
             let mut kmac = hmac::Hmac::new(s256, &k[..]);
@@ -98,10 +113,10 @@ impl PrivateKey {
             vmac.input(&v);
             vmac.raw_result(&mut v);
         }
-        return candidate;
+        return Ok(candidate);
     }
 
-    pub fn wif(self, compressed: Option<bool>, testnet: Option<bool>) -> String {
+    pub fn wif(self, compressed: Option<bool>, testnet: Option<bool>) -> Result<String> {
         let secret_bytes = self.secret.to_bytes_be().1.to_vec();
         let len = secret_bytes.len();
         let to_fill = 32 - len;
@@ -139,24 +154,26 @@ mod secp256k1_private_key_tests {
     use num_bigint::BigInt;
 
     use crate::private_key::{PrivateKey, PrivateKeySecret};
+    use anyhow::{Result, Context};
 
     #[test]
-    fn s256_private_key_wif() {
+    fn s256_private_key_wif() -> Result<()> {
         assert_eq!(
-            PrivateKey::new(&PrivateKeySecret(BigInt::from(5003))).wif(Some(true), Some(true)),
+            PrivateKey::new(&PrivateKeySecret(BigInt::from(5003)))?.wif(Some(true), Some(true))?,
             "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN8rFTv2sfUK"
         );
         assert_eq!(
-            PrivateKey::new(&PrivateKeySecret(BigInt::from(2021).pow(5)))
-                .wif(Some(false), Some(true)),
+            PrivateKey::new(&PrivateKeySecret(BigInt::from(2021).pow(5)))?
+                .wif(Some(false), Some(true))?,
             "91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjpWAxgzczjbCwxic"
         );
         assert_eq!(
             PrivateKey::new(&PrivateKeySecret(
-                BigInt::parse_bytes(b"54321deadbeef", 16).unwrap()
-            ))
-            .wif(Some(true), Some(false)),
+                BigInt::parse_bytes(b"54321deadbeef", 16).context("unable to parse hex to bigint")?
+            ))?
+            .wif(Some(true), Some(false))?,
             "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgiuQJv1h8Ytr2S53a"
         );
+        Ok(())
     }
 }

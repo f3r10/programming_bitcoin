@@ -2,6 +2,7 @@ use std::io::{Read, Seek};
 
 use crate::utils;
 use anyhow::Result;
+use num_bigint::BigUint;
 
 pub struct Block {
     pub version: u32,     //4 bytes
@@ -79,6 +80,22 @@ impl Block {
     pub fn bip141(&self) -> bool {
         self.version >> 1 & 1 == 1
     }
+
+    pub fn difficulty(&self) -> Result<BigUint> {
+        let target = utils::bits_to_target(self.bits)?;
+        let difficulty = 0xffff_u32 * BigUint::from(256_u32).pow(0x1d-3) / target;
+        Ok(difficulty)
+    }
+
+    pub fn target(&self) -> Result<BigUint> {
+        utils::bits_to_target(self.bits)
+    }
+
+    pub fn check_pow(&self) -> Result<bool> {
+        let hash = utils::hash256(&self.serialize()?);
+        let proof = utils::little_endian_unit_to_int(hash.as_slice());
+        Ok(proof < self.target()?)
+    }
 }
 
 
@@ -86,8 +103,11 @@ impl Block {
 mod block_tests {
     use std::io::Cursor;
 
+    use crate::utils;
+
     use super::Block;
-    use anyhow::Result;
+    use anyhow::{Result, Context};
+    use num_bigint::BigUint;
 
     #[test]
     fn test_block_parse() -> Result<()> {
@@ -160,6 +180,54 @@ mod block_tests {
         let mut stream = Cursor::new(&block_raw);
         let block = Block::parse(&mut stream)?;
         assert_eq!(block.bip141(), false);
+        Ok(())
+    }
+
+    #[test]
+    fn test_target() -> Result<()> {
+        let block_raw = hex::decode("020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d")?;
+        let mut stream = Cursor::new(&block_raw);
+        let block = Block::parse(&mut stream)?;
+        let target_raw = BigUint::parse_bytes(b"13ce9000000000000000000000000000000000000000000", 16).context("unable to parse raw target")?;
+        assert_eq!(block.target()?, target_raw);
+        assert_eq!(block.difficulty()?, BigUint::from(888171856257_u64));
+        Ok(())
+    }
+
+    #[test]
+    fn test_difficulty() -> Result<()> {
+        let block_raw = hex::decode("020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d")?;
+        let mut stream = Cursor::new(&block_raw);
+        let block = Block::parse(&mut stream)?;
+        assert_eq!(block.difficulty()?, BigUint::from(888171856257_u64));
+        Ok(())
+    }
+
+    #[test]
+    fn test_pow() -> Result<()> {
+        let block_raw = hex::decode("04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec1")?;
+        let mut stream = Cursor::new(&block_raw);
+        let block = Block::parse(&mut stream)?;
+        assert!(block.check_pow()?);
+        
+        let block_raw = hex::decode("04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec0")?;
+        let mut stream = Cursor::new(&block_raw);
+        let block = Block::parse(&mut stream)?;
+        assert_eq!(block.check_pow()?, false);
+        Ok(())
+    }
+
+    #[test]
+    fn test_calculate_new_bits() -> Result<()> {
+        let block_raw = hex::decode("000000203471101bbda3fe307664b3283a9ef0e97d9a38a7eacd8800000000000000000010c8aba8479bbaa5e0848152fd3c2289ca50e1c3e58c9a4faaafbdf5803c5448ddb845597e8b0118e43a81d3")?;
+        let mut stream = Cursor::new(&block_raw);
+        let last_block = Block::parse(&mut stream)?;
+        
+        let block_raw = hex::decode("02000020f1472d9db4b563c35f97c428ac903f23b7fc055d1cfc26000000000000000000b3f449fcbe1bc4cfbcb8283a0d2c037f961a3fdf2b8bedc144973735eea707e1264258597e8b0118e5f00474")?;
+        let mut stream = Cursor::new(&block_raw);
+        let first_block = Block::parse(&mut stream)?;
+        let new_bits = utils::calculate_new_bits(&last_block, &first_block)?;
+        assert_eq!(hex::encode(new_bits), "80df6217");
         Ok(())
     }
 }

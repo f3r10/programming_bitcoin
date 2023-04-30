@@ -1,6 +1,7 @@
 use core::panic;
 use std::io::Read;
 
+use byteorder::{LittleEndian, ByteOrder};
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use ripemd::Ripemd160;
@@ -9,12 +10,14 @@ use sha2::{Digest, Sha256};
 use crate::{
     op,
     script::{Command, Script},
-    utils,
+    utils, block::Block,
 };
 use anyhow::{Result, Context};
 
 const BASE58_ALPHABET: &'static [u8] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+const TWO_WEEKS: i32 = 60 * 60 * 24 * 14;
 
 // A better alternative would be to use this external create: https://docs.rs/base58/latest/src/base58/lib.rs.html#37-40
 // div_rem only works until this crate was added: https://docs.rs/num-integer/0.1.45/num_integer/trait.Integer.html
@@ -99,6 +102,10 @@ pub fn hash160(s: &[u8]) -> Vec<u8> {
 
 pub fn little_endian_to_int(s: &[u8]) -> BigInt {
     BigInt::from_bytes_le(num_bigint::Sign::Plus, s)
+}
+
+pub fn little_endian_unit_to_int(s: &[u8]) -> BigUint {
+    BigUint::from_bytes_le(s)
 }
 
 pub fn int_to_little_endian(s: &BigInt, limit: u64) -> Result<Vec<u8>> {
@@ -208,11 +215,51 @@ pub fn h160_to_p2psh_address(h160: &Vec<u8>, testnet: bool) -> Result<String> {
     encode_base58_checksum(&[[prefix].to_vec(), h160.to_vec()].concat())
 }
 
+pub fn bits_to_target(bits: [u8; 4]) -> Result<BigUint> {
+    let exponent = bits.last().context("unable to get the last from bits")?;
+    let mut coeff_buffer = [0; 3];
+    let mut handle = bits.take(3);
+    handle.read(&mut coeff_buffer)?;
+    let coefficient = LittleEndian::read_u24(&coeff_buffer);
+    let target = coefficient * (BigUint::from(256_u32).pow((exponent - 3).into()));
+    Ok(target)
+}
+
+pub fn target_to_bits(target: BigUint) -> [u8; 4] {
+    let mut raw_bytes = target.to_bytes_be();
+    raw_bytes = raw_bytes.into_iter().skip_while(|x| *x == 0).collect();
+    let exponent: usize;
+    let mut coefficient: Vec<u8>;
+    if raw_bytes[0] > 0x7f {
+        exponent = raw_bytes.len() + 1;
+        coefficient = [[b'\x00'].to_vec(), raw_bytes[0..2].to_vec()].concat();
+    } else {
+        exponent = raw_bytes.len();
+        coefficient = raw_bytes[0..3].to_vec();
+    }
+    coefficient.reverse();
+    let exponent: Vec<u8> = exponent.to_be_bytes().into_iter().skip_while(|x| *x == 0).collect();
+    let new_bits = [coefficient, exponent].concat();
+    new_bits.try_into().unwrap()
+}
+
+pub fn calculate_new_bits(last_block: &Block, first_block: &Block) -> Result<[u8; 4]> {
+    let mut time_differential = (last_block.timestamp as i32) - (first_block.timestamp as i32);
+    if time_differential > TWO_WEEKS * 4 {
+        time_differential = TWO_WEEKS * 4
+    }
+    if time_differential < TWO_WEEKS / 4 {
+        time_differential = TWO_WEEKS / 4
+    }
+    let new_target = last_block.target()? * (time_differential as u32) / (TWO_WEEKS as u32);
+    Ok(target_to_bits(new_target))
+}
+
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{decode_base58, encode_base58_checksum, h160_to_p2psh_address};
 
-    use super::{encode_base58, encode_varint, h160_to_p2pkh_address};
+    use super::{encode_base58, encode_varint, h160_to_p2pkh_address, bits_to_target};
     use anyhow::Result;
 
     #[test]
@@ -264,6 +311,15 @@ mod utils_tests {
         assert_eq!(h160_to_p2psh_address(&h160, false)?, want);
         let want = "2N3u1R6uwQfuobCqbCgBkpsgBxvr1tZpe7B";
         assert_eq!(h160_to_p2psh_address(&h160, true)?, want);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bits_to_target() -> Result<()> {
+        let bits: [u8; 4] = hex::decode("e93c0118")?.try_into().unwrap();
+        let target = bits_to_target(bits)?;
+        let target_fmt = format!("{:#064x}", target);
+        assert_eq!(target_fmt, "0x00000000000000013ce9000000000000000000000000000000000000000000");
         Ok(())
     }
 }

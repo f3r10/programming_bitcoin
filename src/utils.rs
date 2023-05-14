@@ -255,6 +255,18 @@ pub fn calculate_new_bits(last_block: &Block, first_block: &Block) -> Result<[u8
     Ok(target_to_bits(new_target))
 }
 
+pub fn strip_zero_end(slice: &[u8]) -> Vec<u8> {
+    let mut bytes = slice;
+    while let [rest @ .., last] = bytes {
+        if last == &0_u8 {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes.to_vec()
+}
+
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{decode_base58, encode_base58_checksum, h160_to_p2psh_address};

@@ -18,6 +18,7 @@ pub mod tx;
 pub mod tx_fetcher;
 pub mod utils;
 pub mod block;
+pub mod network;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

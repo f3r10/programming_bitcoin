@@ -1,12 +1,14 @@
 #![feature(seek_stream_len)]
+use anyhow::{Context, Result};
 use num_bigint::BigInt;
 use once_cell::sync::Lazy;
 use s256_field::S256Field;
 use s256_point::S256Point;
-use anyhow::{Result, Context};
 
+pub mod block;
 pub mod finite_field;
 pub mod finite_field_point;
+pub mod network;
 pub mod op;
 pub mod private_key;
 pub mod real_numbers_point;
@@ -17,8 +19,6 @@ pub mod signature;
 pub mod tx;
 pub mod tx_fetcher;
 pub mod utils;
-pub mod block;
-pub mod network;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

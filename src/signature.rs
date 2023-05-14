@@ -7,7 +7,7 @@ use byteorder::{BigEndian, ByteOrder};
 use num_bigint::BigInt;
 
 use crate::utils;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 
 pub struct SignatureHash(BigInt);
 
@@ -76,7 +76,11 @@ impl Signature {
             // let mut rbin = &self.r.to_bytes_be().1.to_vec()[0..32];
             let mut rbin = &utils::int_to_big_endian(&self.r, 32)?[..];
             let mut v = Vec::new();
-            v.extend_from_slice(rbin.strip_prefix(b"\x00").or(Some(rbin)).context("rbin not present")?);
+            v.extend_from_slice(
+                rbin.strip_prefix(b"\x00")
+                    .or(Some(rbin))
+                    .context("rbin not present")?,
+            );
             if rbin[0] & 0x80 != 0 {
                 let marker = &b"\x00"[0..1];
                 v.clear();
@@ -84,14 +88,23 @@ impl Signature {
             }
             rbin = v.as_slice();
             result.push(0x2);
-            result.push(*(rbin.len()).to_be_bytes().last().context("rbin len last byte not present")?);
+            result.push(
+                *(rbin.len())
+                    .to_be_bytes()
+                    .last()
+                    .context("rbin len last byte not present")?,
+            );
             result.extend_from_slice(rbin);
         }
         {
             // let mut sbin = &self.s.to_bytes_be().1.to_vec()[0..32];
             let mut sbin = &utils::int_to_big_endian(&self.s, 32)?[..];
             let mut v = Vec::new();
-            v.extend_from_slice(sbin.strip_prefix(b"\x00").or(Some(sbin)).context("sbin not present")?);
+            v.extend_from_slice(
+                sbin.strip_prefix(b"\x00")
+                    .or(Some(sbin))
+                    .context("sbin not present")?,
+            );
             if sbin[0] & 0x80 != 0 {
                 let marker = &b"\x00"[0..1];
                 v.clear();
@@ -99,12 +112,24 @@ impl Signature {
             }
             sbin = v.as_slice();
             result.push(2); //.extend_from_slice(&vec![&b"\x02"[0..1], &sbin.len().to_be_bytes(), sbin].concat());
-            result.push(*sbin.len().to_be_bytes().last().context("sbin len last byte not present")?);
+            result.push(
+                *sbin
+                    .len()
+                    .to_be_bytes()
+                    .last()
+                    .context("sbin len last byte not present")?,
+            );
             result.extend_from_slice(sbin)
         }
         let mut final_r: Vec<u8> = Vec::new();
         final_r.push(0x30);
-        final_r.push(*result.len().to_be_bytes().last().context("final len byte not present")?);
+        final_r.push(
+            *result
+                .len()
+                .to_be_bytes()
+                .last()
+                .context("final len byte not present")?,
+        );
         final_r.extend_from_slice(&result);
         Ok(final_r)
     }
@@ -117,7 +142,10 @@ impl Signature {
     }
 
     pub fn signature_hash_from_hex(passphrase: &str) -> Result<SignatureHash> {
-        Ok(SignatureHash(BigInt::parse_bytes(passphrase.as_bytes(), 16).context("unable to parse hex bytes to bigint")?))
+        Ok(SignatureHash(
+            BigInt::parse_bytes(passphrase.as_bytes(), 16)
+                .context("unable to parse hex bytes to bigint")?,
+        ))
     }
 
     pub fn signature_hash_from_vec(passphrase: Vec<u8>) -> SignatureHash {
@@ -143,7 +171,7 @@ mod signature_tests {
     use num_bigint::BigInt;
 
     use super::Signature;
-    use anyhow::{Result, Context};
+    use anyhow::{Context, Result};
 
     #[test]
 
@@ -151,15 +179,16 @@ mod signature_tests {
         let r: BigInt = BigInt::parse_bytes(
             b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6",
             16,
-        ).context("unable to parse hex bytes to bigint")?;
+        )
+        .context("unable to parse hex bytes to bigint")?;
         let s: BigInt = BigInt::parse_bytes(
             b"8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec",
             16,
-        ).context("unable to parseh hex bytes to bigint")?;
+        )
+        .context("unable to parseh hex bytes to bigint")?;
         let sig = Signature::new(r, s);
         assert_eq!(hex::encode(sig.der()?), "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec");
         Ok(())
-
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use std::io::Cursor;
 
+use anyhow::{bail, Context, Result};
 use bitcoin_clone::{
     finite_field::FiniteField,
     op,
@@ -11,7 +12,6 @@ use bitcoin_clone::{
     utils, PointWrapper, G, N,
 };
 use num_bigint::BigInt;
-use anyhow::{Result, Context, bail};
 
 fn main() -> Result<()> {
     println!("(17, 64) over F_103 -> {}", check(17, 64, 103));
@@ -123,7 +123,8 @@ fn main() -> Result<()> {
     let z: BigInt = BigInt::parse_bytes(
         b"bc62d4b80d9e36da29c16c5d4d9f11731f36052c72401a76c23c0fb5a9b74423",
         16,
-    ).context("unable to parse hex to bigint")?;
+    )
+    .context("unable to parse hex to bigint")?;
     let r: BigInt = BigInt::parse_bytes(
         b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6",
         16,
@@ -226,15 +227,13 @@ fn main() -> Result<()> {
     let modified_tx = hex::decode("0100000001868278ed6ddfb6c1ed3ad5f8181eb0c7a385aa0836f01d5e4789e6bd304d87221a000000475221022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb702103b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb7152aeffffffff04d3b11400000000001976a914904a49878c0adfc3aa05de7afad2cc15f483a56a88ac7f400900000000001976a914418327e3f3dda4cf5b9089325a4b95abdfa0334088ac722c0c00000000001976a914ba35042cfe9fc66fd35ac2224eebdafd1028ad2788acdc4ace020000000017a91474d691da1574e6b3c192ecfb52cc8984ee7b6c56870000000001000000")?;
     let h256 = utils::hash256(&modified_tx);
     let z = Signature::signature_hash_from_vec(h256);
-    let sec1 =
-        hex::decode("022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb70")?;
+    let sec1 = hex::decode("022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb70")?;
     let der1 = hex::decode("3045022100dc92655fe37036f47756db8102e0d7d5e28b3beb83a8fef4f5dc0559bddfb94e02205a36d4e4e6c7fcd16658c50783e00c341609977aed3ad00937bf4ee942a89937")?;
     let mut der1_cursor = Cursor::new(der1);
     let point1 = S256Point::parse(&sec1)?;
     let sig1 = Signature::parse(&mut der1_cursor)?;
     println!("{}", point1.verify(&z, sig1)?);
-    let sec2 =
-        hex::decode("03b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb71")?;
+    let sec2 = hex::decode("03b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb71")?;
     let der2 = hex::decode("3045022100da6bee3c93766232079a01639d07fa869598749729ae323eab8eef53577d611b02207bef15429dcadce2121ea07f233115c6f09034c0be68db99980b9a6c5e754022")?;
     let mut der2_cursor = Cursor::new(der2);
     let point2 = S256Point::parse(&sec2)?;

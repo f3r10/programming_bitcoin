@@ -3,9 +3,9 @@ use std::{
     io::{Cursor, Read, Seek},
 };
 
+use anyhow::{Context, Result};
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use num_bigint::BigInt;
-use anyhow::{Result, Context};
 
 use crate::{
     op::OpCodeFunctions,
@@ -15,7 +15,6 @@ use crate::{
     tx_fetcher::TxFetcher,
     utils,
 };
-
 
 #[derive(Debug, Clone)]
 pub struct TxOut {
@@ -171,7 +170,14 @@ impl Tx {
         let redeem_script: Option<Script>;
         if script_pubkey.is_p2sh_script_pubkey() {
             // OP_0 , SIG1, SIG2, ..., RedeemScript
-            let cmd = match tx_in.script_sig.as_ref().context("unable to get script_sig as ref")?.cmds.last().context("unable to get last cmd form script_sig")? {
+            let cmd = match tx_in
+                .script_sig
+                .as_ref()
+                .context("unable to get script_sig as ref")?
+                .cmds
+                .last()
+                .context("unable to get last cmd form script_sig")?
+            {
                 Command::Element(elm) => elm,
                 Command::Operation(_) => panic!("invalid last Cmd for redeem script"),
             };
@@ -235,29 +241,30 @@ impl Tx {
 
     pub fn is_coinbase(&self) -> bool {
         if self.tx_ins.len() > 1 {
-            return false
+            return false;
         }
         let tx_in = &self.tx_ins[0];
-        if tx_in.prev_tx  != [0_u8; 32] {
-            return false
+        if tx_in.prev_tx != [0_u8; 32] {
+            return false;
         }
         if tx_in.prev_index != 0xffffffff {
-            return false
+            return false;
         }
         true
     }
 
     pub fn coinbase_height(&self) -> Option<BigInt> {
         if !self.is_coinbase() {
-            return None
+            return None;
         }
         let first_tx = &self.tx_ins[0];
-        first_tx.script_sig.as_ref().map(|script_sig| {
-            match &script_sig.cmds[0] {
+        first_tx
+            .script_sig
+            .as_ref()
+            .map(|script_sig| match &script_sig.cmds[0] {
                 Command::Element(elm) => utils::little_endian_to_int(&elm),
                 Command::Operation(_) => panic!("Invalid coinbase first cmd"),
-            }
-        })
+            })
     }
 }
 
@@ -415,7 +422,7 @@ mod tx_tests {
     };
 
     use super::Tx;
-    use anyhow::{Result, Ok, Context};
+    use anyhow::{Context, Ok, Result};
 
     #[test]
     fn test_tx_version() -> Result<()> {
@@ -440,7 +447,10 @@ mod tx_tests {
         );
         assert_eq!(hex::encode(tx.tx_ins[0].script_sig.clone().context("script_sig not present")?.serialize()?), "6b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278a");
         assert_eq!(
-            tx.tx_ins[0].sequence.clone().context("sequence not present")?,
+            tx.tx_ins[0]
+                .sequence
+                .clone()
+                .context("sequence not present")?,
             0xfffffffe_u32
         );
         Ok(())
@@ -637,7 +647,8 @@ mod tx_tests {
         let want = BigInt::parse_bytes(
             b"27e0c5994dec7824e56dec6b2fcb342eb7cdb0d0957c2fce9882f715e85d81a6",
             16,
-        ).context("unable to parse bytes to bigint")?;
+        )
+        .context("unable to parse bytes to bigint")?;
         assert_eq!(tx.sig_hash(0, None)?, want);
         Ok(())
     }

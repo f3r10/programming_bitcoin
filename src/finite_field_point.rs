@@ -113,7 +113,8 @@ impl Add for PointWrapper<FiniteField> {
                         b: b1.clone(),
                     };
                 } else if p1 == p2
-                    && y1.clone() == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime).unwrap()
+                    && y1.clone()
+                        == FiniteField::new_big_int(BigInt::from(0), x1.clone().prime).unwrap()
                 {
                     PointWrapper::Inf
                 } else if p1 == p2 {
@@ -123,7 +124,8 @@ impl Add for PointWrapper<FiniteField> {
                         / (FiniteField::new_big_int(BigInt::from(2), x1.clone().prime).unwrap()
                             * y1.clone());
                     let x = s.pow(BigInt::from(2))
-                        - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime).unwrap() * x1.clone();
+                        - FiniteField::new_big_int(BigInt::from(2), x1.clone().prime).unwrap()
+                            * x1.clone();
                     let y = s * (x1.clone() - x.clone()) - y1.clone();
                     return PointWrapper::Point {
                         x,
@@ -211,7 +213,7 @@ mod point_finite_field_test {
             let y = FiniteField::new(y_raw, prime)?;
             let result = std::panic::catch_unwind(|| PointWrapper::new(x, y, a.clone(), b.clone()));
             assert!(result.is_err())
-        };
+        }
         Ok(())
     }
     #[test]
@@ -252,11 +254,11 @@ mod point_finite_field_test {
             let y_res = FiniteField::new(p.res.1, prime)?;
             let p_res = PointWrapper::new(x_res, y_res, a, b);
             assert_eq!(p_res, p1 + p2)
-        };
+        }
         Ok(())
     }
     #[test]
-    fn test_mul_binary_expansion() -> Result<()>{
+    fn test_mul_binary_expansion() -> Result<()> {
         let prime = 223;
         let a = FiniteField::new(0, prime)?;
         let b = FiniteField::new(7, prime)?;

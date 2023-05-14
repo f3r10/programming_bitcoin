@@ -8,7 +8,7 @@ use crate::{
     signature::{Signature, SignatureHash},
     utils, PointWrapper, G, N, P,
 };
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[derive(Debug, Clone)]
 pub struct S256Point {
@@ -73,7 +73,7 @@ impl S256Point {
             Ok(it) => it,
             Err(_) => bail!("unable to get G"),
         };
-        let n_2: BigInt =  n - 2;
+        let n_2: BigInt = n - 2;
         let s_inv = sig.s.modpow(&n_2, &n);
         let u = (z.as_ref() * s_inv.clone()).modpow(&BigInt::from(1), &n);
         let v = (sig.r.clone() * s_inv.clone()).modpow(&BigInt::from(1), &n);
@@ -161,7 +161,7 @@ mod secp256k1_point_tests {
     use crate::{
         private_key::PrivateKey, signature::Signature, PointWrapper, S256Field, S256Point, G, N,
     };
-    use anyhow::{Context, Result, bail};
+    use anyhow::{bail, Context, Result};
 
     #[test]
     fn s256_point_test() -> Result<()> {
@@ -273,7 +273,8 @@ mod secp256k1_point_tests {
         assert_eq!(
             hex::encode(
                 PrivateKey::new(&PrivateKey::generate_simple_secret(
-                    BigInt::parse_bytes(b"deadbeef54321", 16).context("unable to parse hex to bigint")?
+                    BigInt::parse_bytes(b"deadbeef54321", 16)
+                        .context("unable to parse hex to bigint")?
                 ))?
                 .point
                 .sec(Some(true))?

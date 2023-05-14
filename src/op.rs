@@ -9,7 +9,7 @@ use crate::{
     signature::{Signature, SignatureHash},
     utils,
 };
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 
 #[derive(Debug, Clone)]
 pub enum OpCodeFunctions {
@@ -32,7 +32,7 @@ pub enum OpCodeFunctions {
     OpSigHashAll(u32),
     OpCheckMultisig(u32),
     OpNop(u32),
-    OpUnknown(u32)
+    OpUnknown(u32),
 }
 
 impl OpCodeFunctions {
@@ -156,7 +156,9 @@ pub fn op_hash160(stack: &mut Vec<Vec<u8>>) -> Result<bool> {
     if stack.len() < 1 {
         return Ok(false);
     }
-    let element = stack.pop().context("unable to get element from the stack")?;
+    let element = stack
+        .pop()
+        .context("unable to get element from the stack")?;
     stack.push(utils::hash160(&element));
     return Ok(true);
 }
@@ -165,8 +167,12 @@ pub fn op_equal(stack: &mut Vec<Vec<u8>>) -> Result<bool> {
     if stack.len() < 2 {
         return Ok(false);
     }
-    let element1 = stack.pop().context("unable to get element from the stack")?;
-    let element2 = stack.pop().context("unable to get element from the stack")?;
+    let element1 = stack
+        .pop()
+        .context("unable to get element from the stack")?;
+    let element2 = stack
+        .pop()
+        .context("unable to get element from the stack")?;
     if element1 == element2 {
         stack.push(encode_num(1)?)
     } else {
@@ -179,7 +185,9 @@ pub fn op_verify(stack: &mut Vec<Vec<u8>>) -> Result<bool> {
     if stack.len() < 1 {
         return Ok(false);
     }
-    let element = stack.pop().context("unable to get element from the stack")?;
+    let element = stack
+        .pop()
+        .context("unable to get element from the stack")?;
     if decode_num(element) == 0 {
         return Ok(false);
     }
@@ -202,8 +210,12 @@ pub fn operation(
             if stack.len() < 2 {
                 return Ok(false);
             } else {
-                let sec_pubkey = stack.pop().context("unable to get element from the stack")?;
-                let der_signature = stack.pop().context("unable to get element from the stack")?;
+                let sec_pubkey = stack
+                    .pop()
+                    .context("unable to get element from the stack")?;
+                let der_signature = stack
+                    .pop()
+                    .context("unable to get element from the stack")?;
                 let mut der_signature_cursor = Cursor::new(der_signature);
                 let point = S256Point::parse(&sec_pubkey)?;
                 let sig = Signature::parse(&mut der_signature_cursor)?;
@@ -219,7 +231,12 @@ pub fn operation(
             if stack.len() < 1 {
                 return Ok(false);
             }
-            stack.push(stack.last().context("unable to get last element from the stack")?.to_vec());
+            stack.push(
+                stack
+                    .last()
+                    .context("unable to get last element from the stack")?
+                    .to_vec(),
+            );
             Ok(true)
         }
         OpCodeFunctions::OpHash160(_) => op_hash160(stack),
@@ -233,7 +250,9 @@ pub fn operation(
             if stack.len() < 1 {
                 return Ok(false);
             }
-            let element = stack.pop().context("unable to pop element from the stack")?;
+            let element = stack
+                .pop()
+                .context("unable to pop element from the stack")?;
             stack.push(utils::hash256(&element));
             return Ok(true);
         }
@@ -246,8 +265,16 @@ pub fn operation(
             if stack.len() < 2 {
                 return Ok(false);
             }
-            let element1 = decode_num(stack.pop().context("unable to pop element from the stack")?);
-            let element2 = decode_num(stack.pop().context("unable to pop element from the stack")?);
+            let element1 = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            );
+            let element2 = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            );
             stack.push(encode_num(element1 + element2)?);
             return Ok(true);
         }
@@ -255,8 +282,16 @@ pub fn operation(
             if stack.len() < 2 {
                 return Ok(false);
             }
-            let element1 = decode_num(stack.pop().context("unable to pop element from the stack")?);
-            let element2 = decode_num(stack.pop().context("unable to pop element from the stack")?); 
+            let element1 = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            );
+            let element2 = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            );
             stack.push(encode_num(element1 * element2)?);
             return Ok(true);
         }
@@ -283,7 +318,12 @@ pub fn operation(
             if stack.len() < 2 {
                 return Ok(false);
             }
-            if decode_num(stack.pop().context("unable to pop element from the stack")?) == 0 {
+            if decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            ) == 0
+            {
                 stack.push(encode_num(1)?)
             } else {
                 stack.push(encode_num(0)?)
@@ -295,7 +335,9 @@ pub fn operation(
                 return Ok(false);
             }
             let mut out = [0u8; 20];
-            let element = stack.pop().context("unable to pop element from the stack")?;
+            let element = stack
+                .pop()
+                .context("unable to pop element from the stack")?;
             let mut hasher = Sha1::new();
             hasher.input(element.as_slice());
             hasher.result(&mut out);
@@ -307,32 +349,48 @@ pub fn operation(
             if stack.len() < 1 {
                 return Ok(false);
             }
-            let n = decode_num(stack.pop().context("unable to pop element from the stack")?) as usize;
+            let n = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            ) as usize;
             if stack.len() < n + 1 {
                 return Ok(false);
             }
             let mut sec_pubkeys: Vec<S256Point> = Vec::with_capacity(n);
             for _ in 0..n {
-                let sec_pubkey = stack.pop().context("unable to pop element from the stack")?;
+                let sec_pubkey = stack
+                    .pop()
+                    .context("unable to pop element from the stack")?;
                 let point = S256Point::parse(&sec_pubkey)?;
                 sec_pubkeys.push(point);
             }
-            let m = decode_num(stack.pop().context("unable to pop element from the stack")?) as usize;
+            let m = decode_num(
+                stack
+                    .pop()
+                    .context("unable to pop element from the stack")?,
+            ) as usize;
             if stack.len() < m + 1 {
                 return Ok(false);
             }
             let mut der_signatures: Vec<Signature> = Vec::with_capacity(n);
             for _ in 0..m {
                 // each DER signature is assumed to be signed with SIGHASH_ALL
-                let mut der_signature = stack.pop().context("unable to pop element from the stack")?;
-                der_signature.pop().context("unable to pop element from the stack")?;
+                let mut der_signature = stack
+                    .pop()
+                    .context("unable to pop element from the stack")?;
+                der_signature
+                    .pop()
+                    .context("unable to pop element from the stack")?;
                 let mut der_signature_cursor = Cursor::new(der_signature);
                 let sig = Signature::parse(&mut der_signature_cursor)?;
                 der_signatures.push(sig);
             }
 
             // off-by-one error
-            stack.pop().context("unable to pop element from the stack")?;
+            stack
+                .pop()
+                .context("unable to pop element from the stack")?;
 
             sec_pubkeys.reverse();
             for sig in der_signatures {
@@ -340,7 +398,9 @@ pub fn operation(
                     return Ok(false);
                 }
                 while sec_pubkeys.len() > 0 {
-                    let point = sec_pubkeys.pop().context("unable to pop element from the stack")?;
+                    let point = sec_pubkeys
+                        .pop()
+                        .context("unable to pop element from the stack")?;
                     let check = point.verify(z, sig.clone())?;
                     if check {
                         break;
@@ -441,7 +501,8 @@ mod op_tests {
     #[test]
     fn test_op_checkmultisig() -> Result<()> {
         let op_code = OpCodeFunctions::op_checkmultisig();
-        let z_raw = hex::decode("e71bfa115715d6fd33796948126f40a8cdd39f187e4afb03896795189fe1423c")?;
+        let z_raw =
+            hex::decode("e71bfa115715d6fd33796948126f40a8cdd39f187e4afb03896795189fe1423c")?;
         let z = Signature::signature_hash_from_vec(z_raw);
         let sig1 = hex::decode("3045022100dc92655fe37036f47756db8102e0d7d5e28b3beb83a8fef4f5dc0559bddfb94e02205a36d4e4e6c7fcd16658c50783e00c341609977aed3ad00937bf4ee942a8993701")?;
         let sig2 = hex::decode("3045022100da6bee3c93766232079a01639d07fa869598749729ae323eab8eef53577d611b02207bef15429dcadce2121ea07f233115c6f09034c0be68db99980b9a6c5e75402201")?;

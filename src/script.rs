@@ -13,7 +13,7 @@ use crate::{
     signature::SignatureHash,
     utils::{self, encode_varint},
 };
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -153,7 +153,11 @@ impl Script {
         if stack.len() == 0 {
             return Ok(false);
         }
-        if stack.pop().context("unable to pop element from the stack")? == b"" {
+        if stack
+            .pop()
+            .context("unable to pop element from the stack")?
+            == b""
+        {
             return Ok(false);
         }
 
@@ -274,15 +278,18 @@ mod script_tests {
     }
 
     #[test]
-    fn test_parse_scriptsig_genesis_coinbase_tx() -> Result<()>{
+    fn test_parse_scriptsig_genesis_coinbase_tx() -> Result<()> {
         let raw_scriptsig = hex::decode("4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73")?;
         let mut stream = Cursor::new(raw_scriptsig);
         let s = Script::parse(&mut stream)?;
-        let a = match &s.cmds[2]{
+        let a = match &s.cmds[2] {
             Command::Element(r) => String::from_utf8(r.to_vec())?,
             Command::Operation(_) => "Op".to_string(),
         };
-        assert_eq!("The Times 03/Jan/2009 Chancellor on brink of second bailout for banks", a);
+        assert_eq!(
+            "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
+            a
+        );
         Ok(())
     }
 
@@ -291,7 +298,7 @@ mod script_tests {
         let raw_scriptsig = hex::decode("5e03d71b07254d696e656420627920416e74506f6f6c20626a31312f4542312f4144362f43205914293101fabe6d6d678e2c8c34afc36896e7d9402824ed38e856676ee94bfdb0c6c4bcd8b2e5666a0400000000000000c7270000a5e00e00")?;
         let mut stream = Cursor::new(raw_scriptsig);
         let s = Script::parse(&mut stream)?;
-        match &s.cmds[0]{
+        match &s.cmds[0] {
             Command::Element(v) => assert_eq!(BigInt::from(465879), utils::little_endian_to_int(v)),
             Command::Operation(_) => assert!(false),
         };

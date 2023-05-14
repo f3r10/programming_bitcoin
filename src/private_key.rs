@@ -12,7 +12,7 @@ pub struct PrivateKey {
     pub point: S256Point,
 }
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 pub struct PrivateKeySecret(BigInt);
 
 impl AsRef<BigInt> for PrivateKeySecret {
@@ -23,7 +23,7 @@ impl AsRef<BigInt> for PrivateKeySecret {
 
 impl PrivateKey {
     pub fn new(secret: &PrivateKeySecret) -> Result<Self> {
-        let g = match G.as_ref(){
+        let g = match G.as_ref() {
             Ok(it) => it,
             Err(_) => bail!("unable to get G"),
         };
@@ -49,7 +49,7 @@ impl PrivateKey {
             Ok(it) => it,
             Err(_) => bail!("unable to get N"),
         };
-        let g = match G.as_ref(){
+        let g = match G.as_ref() {
             Ok(it) => it,
             Err(_) => bail!("unable to get G"),
         };
@@ -154,7 +154,7 @@ mod secp256k1_private_key_tests {
     use num_bigint::BigInt;
 
     use crate::private_key::{PrivateKey, PrivateKeySecret};
-    use anyhow::{Result, Context};
+    use anyhow::{Context, Result};
 
     #[test]
     fn s256_private_key_wif() -> Result<()> {
@@ -169,7 +169,8 @@ mod secp256k1_private_key_tests {
         );
         assert_eq!(
             PrivateKey::new(&PrivateKeySecret(
-                BigInt::parse_bytes(b"54321deadbeef", 16).context("unable to parse hex to bigint")?
+                BigInt::parse_bytes(b"54321deadbeef", 16)
+                    .context("unable to parse hex to bigint")?
             ))?
             .wif(Some(true), Some(false))?,
             "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgiuQJv1h8Ytr2S53a"

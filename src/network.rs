@@ -107,7 +107,6 @@ impl Display for NetworkEnvelope {
     }
 }
 
-
 #[cfg(test)]
 mod network_tests {
     use std::io::Cursor;
@@ -115,7 +114,6 @@ mod network_tests {
     use anyhow::Result;
 
     use super::NetworkEnvelope;
-
 
     #[test]
     fn test_network_parse() -> Result<()> {
@@ -143,5 +141,4 @@ mod network_tests {
         assert_eq!(envelope.serialize()?, msg);
         Ok(())
     }
-
 }

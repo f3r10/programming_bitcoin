@@ -3,8 +3,8 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
+use anyhow::{bail, Result};
 use num_bigint::BigInt;
-use anyhow::{Result, bail};
 
 #[derive(Debug, Clone, Eq)]
 pub struct FiniteField {

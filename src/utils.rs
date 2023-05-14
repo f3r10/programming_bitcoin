@@ -1,18 +1,19 @@
 use core::panic;
 use std::io::Read;
 
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{ByteOrder, LittleEndian};
 use num_bigint::{BigInt, BigUint};
 use num_integer::Integer;
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 
 use crate::{
+    block::Block,
     op,
     script::{Command, Script},
-    utils, block::Block,
+    utils,
 };
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 
 const BASE58_ALPHABET: &'static [u8] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -70,7 +71,10 @@ pub fn decode_base58(s: &str) -> Result<Vec<u8>> {
     let mut num = BigUint::from(0_u32);
     for c in s.bytes() {
         num *= 58_u32;
-        let el = BASE58_ALPHABET.iter().position(|x| c == *x).context("unable to get position from filter")?;
+        let el = BASE58_ALPHABET
+            .iter()
+            .position(|x| c == *x)
+            .context("unable to get position from filter")?;
         num += el
     }
     let combined = num.to_bytes_be();
@@ -238,7 +242,11 @@ pub fn target_to_bits(target: BigUint) -> [u8; 4] {
         coefficient = raw_bytes[0..3].to_vec();
     }
     coefficient.reverse();
-    let exponent: Vec<u8> = exponent.to_be_bytes().into_iter().skip_while(|x| *x == 0).collect();
+    let exponent: Vec<u8> = exponent
+        .to_be_bytes()
+        .into_iter()
+        .skip_while(|x| *x == 0)
+        .collect();
     let new_bits = [coefficient, exponent].concat();
     new_bits.try_into().unwrap()
 }
@@ -271,18 +279,21 @@ pub fn strip_zero_end(slice: &[u8]) -> Vec<u8> {
 mod utils_tests {
     use crate::utils::{decode_base58, encode_base58_checksum, h160_to_p2psh_address};
 
-    use super::{encode_base58, encode_varint, h160_to_p2pkh_address, bits_to_target};
+    use super::{bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address};
     use anyhow::Result;
 
     #[test]
     fn base58_test() -> Result<()> {
-        let hex = &hex::decode("7c076ff316692a3d7eb3c3bb0f8b1488cf72e1afcd929e29307032997a838a3d")?[..];
+        let hex =
+            &hex::decode("7c076ff316692a3d7eb3c3bb0f8b1488cf72e1afcd929e29307032997a838a3d")?[..];
         let base58 = encode_base58(hex)?;
         assert_eq!(base58, "9MA8fRQrT4u8Zj8ZRd6MAiiyaxb2Y1CMpvVkHQu5hVM6");
-        let hex = &hex::decode("eff69ef2b1bd93a66ed5219add4fb51e11a840f404876325a1e8ffe0529a2c")?[..];
+        let hex =
+            &hex::decode("eff69ef2b1bd93a66ed5219add4fb51e11a840f404876325a1e8ffe0529a2c")?[..];
         let base58 = encode_base58(hex)?;
         assert_eq!(base58, "4fE3H2E6XMp4SsxtwinF7w9a34ooUrwWe4WsW1458Pd");
-        let hex = &hex::decode("c7207fee197d27c618aea621406f6bf5ef6fca38681d82b2f06fddbdce6feab6")?[..];
+        let hex =
+            &hex::decode("c7207fee197d27c618aea621406f6bf5ef6fca38681d82b2f06fddbdce6feab6")?[..];
         let base58 = encode_base58(hex)?;
         assert_eq!(base58, "EQJsjkd6JaGwxrjEhfeqPenqHwrBmPQZjJGNSCHBkcF7");
         let hex = &b"\0\0\0\0abc"[..];
@@ -293,8 +304,7 @@ mod utils_tests {
         let h160 = hex::encode(decode_base58(addr)?);
         let want = "507b27411ccf7f16f10297de6cef3f291623eddf";
         assert_eq!(h160, want);
-        let got =
-            encode_base58_checksum(&[b"\x6f"[..].to_vec(), hex::decode(h160)?].concat())?;
+        let got = encode_base58_checksum(&[b"\x6f"[..].to_vec(), hex::decode(h160)?].concat())?;
         assert_eq!(got, addr);
         Ok(())
     }
@@ -331,7 +341,10 @@ mod utils_tests {
         let bits: [u8; 4] = hex::decode("e93c0118")?.try_into().unwrap();
         let target = bits_to_target(bits)?;
         let target_fmt = format!("{:#064x}", target);
-        assert_eq!(target_fmt, "0x00000000000000013ce9000000000000000000000000000000000000000000");
+        assert_eq!(
+            target_fmt,
+            "0x00000000000000013ce9000000000000000000000000000000000000000000"
+        );
         Ok(())
     }
 }

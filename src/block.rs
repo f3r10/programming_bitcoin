@@ -5,12 +5,12 @@ use anyhow::Result;
 use num_bigint::BigUint;
 
 pub struct Block {
-    pub version: u32,     //4 bytes
+    pub version: u32,          //4 bytes
     pub prev_block: [u8; 32],  // 32 bytes
     pub merkle_root: [u8; 32], // 32 bytes
-    pub timestamp: u32,   // 4 bytes
-    pub bits: [u8; 4],        // 4 bytes
-    pub nonce: [u8; 4],       // 4 bytes
+    pub timestamp: u32,        // 4 bytes
+    pub bits: [u8; 4],         // 4 bytes
+    pub nonce: [u8; 4],        // 4 bytes
 }
 
 impl Block {
@@ -20,9 +20,16 @@ impl Block {
         merkle_root: [u8; 32],
         timestamp: u32,
         bits: [u8; 4],
-        nonce: [u8; 4]
+        nonce: [u8; 4],
     ) -> Self {
-        Block { version, prev_block, merkle_root, timestamp, bits, nonce}
+        Block {
+            version,
+            prev_block,
+            merkle_root,
+            timestamp,
+            bits,
+            nonce,
+        }
     }
 
     pub fn parse<R: Read + Seek>(stream: &mut R) -> Result<Self> {
@@ -48,14 +55,33 @@ impl Block {
         let mut nonce = [0; 4];
         let mut handle = stream.take(4);
         handle.read(&mut nonce)?;
-        Ok(Block { version, prev_block, merkle_root, timestamp, bits, nonce})
+        Ok(Block {
+            version,
+            prev_block,
+            merkle_root,
+            timestamp,
+            bits,
+            nonce,
+        })
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut result: Vec<Vec<u8>> = Vec::new();
         result.push(utils::u32_to_little_endian(self.version, 4)?);
-        result.push(self.prev_block.clone().into_iter().rev().collect::<Vec<u8>>());
-        result.push(self.merkle_root.clone().into_iter().rev().collect::<Vec<u8>>());
+        result.push(
+            self.prev_block
+                .clone()
+                .into_iter()
+                .rev()
+                .collect::<Vec<u8>>(),
+        );
+        result.push(
+            self.merkle_root
+                .clone()
+                .into_iter()
+                .rev()
+                .collect::<Vec<u8>>(),
+        );
         result.push(utils::u32_to_little_endian(self.timestamp, 4)?);
         result.push(self.bits.to_vec());
         result.push(self.nonce.to_vec());
@@ -83,7 +109,7 @@ impl Block {
 
     pub fn difficulty(&self) -> Result<BigUint> {
         let target = utils::bits_to_target(self.bits)?;
-        let difficulty = 0xffff_u32 * BigUint::from(256_u32).pow(0x1d-3) / target;
+        let difficulty = 0xffff_u32 * BigUint::from(256_u32).pow(0x1d - 3) / target;
         Ok(difficulty)
     }
 
@@ -98,7 +124,6 @@ impl Block {
     }
 }
 
-
 #[cfg(test)]
 mod block_tests {
     use std::io::Cursor;
@@ -106,7 +131,7 @@ mod block_tests {
     use crate::utils;
 
     use super::Block;
-    use anyhow::{Result, Context};
+    use anyhow::{Context, Result};
     use num_bigint::BigUint;
 
     #[test]
@@ -123,7 +148,6 @@ mod block_tests {
         assert_eq!(hex::decode("e93c0118")?, block.bits);
         assert_eq!(hex::decode("a4ffd71d")?, block.nonce);
         Ok(())
-
     }
 
     #[test]
@@ -140,7 +164,10 @@ mod block_tests {
         let block_raw = hex::decode("020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d")?;
         let mut stream = Cursor::new(&block_raw);
         let block = Block::parse(&mut stream)?;
-        assert_eq!(block.hash()?, hex::decode("0000000000000000007e9e4c586439b0cdbe13b1370bdd9435d76a644d047523")?);
+        assert_eq!(
+            block.hash()?,
+            hex::decode("0000000000000000007e9e4c586439b0cdbe13b1370bdd9435d76a644d047523")?
+        );
         Ok(())
     }
 
@@ -188,7 +215,9 @@ mod block_tests {
         let block_raw = hex::decode("020000208ec39428b17323fa0ddec8e887b4a7c53b8c0a0a220cfd0000000000000000005b0750fce0a889502d40508d39576821155e9c9e3f5c3157f961db38fd8b25be1e77a759e93c0118a4ffd71d")?;
         let mut stream = Cursor::new(&block_raw);
         let block = Block::parse(&mut stream)?;
-        let target_raw = BigUint::parse_bytes(b"13ce9000000000000000000000000000000000000000000", 16).context("unable to parse raw target")?;
+        let target_raw =
+            BigUint::parse_bytes(b"13ce9000000000000000000000000000000000000000000", 16)
+                .context("unable to parse raw target")?;
         assert_eq!(block.target()?, target_raw);
         assert_eq!(block.difficulty()?, BigUint::from(888171856257_u64));
         Ok(())
@@ -209,7 +238,7 @@ mod block_tests {
         let mut stream = Cursor::new(&block_raw);
         let block = Block::parse(&mut stream)?;
         assert!(block.check_pow()?);
-        
+
         let block_raw = hex::decode("04000000fbedbbf0cfdaf278c094f187f2eb987c86a199da22bbb20400000000000000007b7697b29129648fa08b4bcd13c9d5e60abb973a1efac9c8d573c71c807c56c3d6213557faa80518c3737ec0")?;
         let mut stream = Cursor::new(&block_raw);
         let block = Block::parse(&mut stream)?;
@@ -222,7 +251,7 @@ mod block_tests {
         let block_raw = hex::decode("000000203471101bbda3fe307664b3283a9ef0e97d9a38a7eacd8800000000000000000010c8aba8479bbaa5e0848152fd3c2289ca50e1c3e58c9a4faaafbdf5803c5448ddb845597e8b0118e43a81d3")?;
         let mut stream = Cursor::new(&block_raw);
         let last_block = Block::parse(&mut stream)?;
-        
+
         let block_raw = hex::decode("02000020f1472d9db4b563c35f97c428ac903f23b7fc055d1cfc26000000000000000000b3f449fcbe1bc4cfbcb8283a0d2c037f961a3fdf2b8bedc144973735eea707e1264258597e8b0118e5f00474")?;
         let mut stream = Cursor::new(&block_raw);
         let first_block = Block::parse(&mut stream)?;

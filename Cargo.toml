@@ -17,6 +17,7 @@ serde = {version = "1.0.154", features = ["derive"]}
 byteorder = "1.4.3"
 rust-crypto = "0.2.36"
 anyhow = "1.0.70"
+chrono = "0.4.24"
 
 [dependencies.num-integer]
 version = "0.1.42"

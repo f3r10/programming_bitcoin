@@ -263,6 +263,18 @@ pub fn calculate_new_bits(last_block: &Block, first_block: &Block) -> Result<[u8
     Ok(target_to_bits(new_target))
 }
 
+pub fn calculate_new_bits_2(previous_bits: [u8; 4], time_differential: i32) -> Result<[u8; 4]> {
+    let mut time_differential = time_differential;
+    if time_differential > TWO_WEEKS * 4 {
+        time_differential = TWO_WEEKS * 4
+    }
+    if time_differential < TWO_WEEKS / 4 {
+        time_differential = TWO_WEEKS / 4
+    }
+    let new_target = bits_to_target(previous_bits)? * (time_differential as u32) / (TWO_WEEKS as u32);
+    Ok(target_to_bits(new_target))
+}
+
 pub fn strip_zero_end(slice: &[u8]) -> Vec<u8> {
     let mut bytes = slice;
     while let [rest @ .., last] = bytes {

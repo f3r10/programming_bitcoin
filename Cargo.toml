@@ -18,6 +18,7 @@ byteorder = "1.4.3"
 rust-crypto = "0.2.36"
 anyhow = "1.0.70"
 chrono = "0.4.24"
+tokio = { version = "1.28.1", features = ["full"]}
 
 [dependencies.num-integer]
 version = "0.1.42"

@@ -312,7 +312,8 @@ impl SimpleNode {
 
     pub async fn handshake(&mut self) -> Result<NetworkEnvelope> {
         let message = VersionMessage::new_default()?;
-        let envelope = NetworkEnvelope::new(message.command.to_vec(), message.serialize()?, self.testnet);
+        let envelope =
+            NetworkEnvelope::new(message.command.to_vec(), message.serialize()?, self.testnet);
         self.writer.write_all(&envelope.serialize()?).await?;
         self.writer.flush().await?;
 
@@ -531,13 +532,7 @@ mod network_tests {
     #[tokio::test]
     #[ignore = "it is necessary to execute a full bitcoin node"]
     async fn test_handshake() -> Result<()> {
-        let mut node = SimpleNode::new_and_send(
-            "127.0.0.1",
-            8333,
-            false,
-            true,
-        )
-        .await?;
+        let mut node = SimpleNode::new_and_send("127.0.0.1", 8333, false, true).await?;
         let ans = node.handshake().await;
         assert!(ans.is_ok());
         Ok(())
@@ -572,18 +567,13 @@ mod network_tests {
         let mut first_epoch_timestamp = previous.timestamp;
         let mut expected_bits = hex::decode(crate::block::LOWEST_BITS)?;
         let mut count = 1_i32;
-        let mut node = SimpleNode::new_and_send(
-            "127.0.0.1",
-            8333,
-            false,
-            true,
-        )
-        .await?;
+        let mut node = SimpleNode::new_and_send("127.0.0.1", 8333, false, true).await?;
         let ans = node.handshake().await;
         assert!(ans.is_ok());
         for _ in 0..19 {
             let getheaders = GetHeadersMessage::new(previous.hash()?);
-            node.send(crate::network::Messages::GetHeadersMessage(getheaders)).await?;
+            node.send(crate::network::Messages::GetHeadersMessage(getheaders))
+                .await?;
             let mut r = node.read().await?;
             while r.command != b"headers" {
                 r = node.read().await?;
@@ -601,7 +591,8 @@ mod network_tests {
                     }
                     if count.div_mod_floor(&2016).1 == 0 {
                         let time_diff = previous.timestamp - first_epoch_timestamp;
-                        expected_bits = calculate_new_bits_2(previous.bits, time_diff as i32)?.to_vec();
+                        expected_bits =
+                            calculate_new_bits_2(previous.bits, time_diff as i32)?.to_vec();
                         println!("{}", hex::encode(&expected_bits));
                         first_epoch_timestamp = header.timestamp;
                     }
@@ -611,8 +602,9 @@ mod network_tests {
                     previous = header;
                     count += 1;
                 }
-
-            } else {assert!(false)}
+            } else {
+                assert!(false)
+            }
         }
         Ok(())
     }

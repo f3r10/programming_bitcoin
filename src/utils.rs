@@ -271,7 +271,8 @@ pub fn calculate_new_bits_2(previous_bits: [u8; 4], time_differential: i32) -> R
     if time_differential < TWO_WEEKS / 4 {
         time_differential = TWO_WEEKS / 4
     }
-    let new_target = bits_to_target(previous_bits)? * (time_differential as u32) / (TWO_WEEKS as u32);
+    let new_target =
+        bits_to_target(previous_bits)? * (time_differential as u32) / (TWO_WEEKS as u32);
     Ok(target_to_bits(new_target))
 }
 

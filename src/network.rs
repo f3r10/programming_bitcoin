@@ -529,6 +529,7 @@ mod network_tests {
     }
 
     #[tokio::test]
+    #[ignore = "it is necessary to execute a full bitcoin node"]
     async fn test_handshake() -> Result<()> {
         let mut node = SimpleNode::new_and_send(
             "127.0.0.1",
@@ -562,6 +563,7 @@ mod network_tests {
     }
 
     #[tokio::test]
+    #[ignore = "it is necessary to execute a full bitcoin node"]
     async fn test_node_get_headers() -> Result<()> {
         let genesis_block = hex::decode(crate::block::GENESIS_BLOCK)?;
         let cursor = Cursor::new(&genesis_block);

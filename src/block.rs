@@ -1,5 +1,5 @@
-use crate::utils;
-use anyhow::Result;
+use crate::utils::{self, merkle_root};
+use anyhow::{Context, Result};
 use num_bigint::BigUint;
 use tokio::io::{AsyncBufRead, AsyncReadExt};
 
@@ -14,6 +14,7 @@ pub struct Block {
     pub timestamp: u32,        // 4 bytes
     pub bits: [u8; 4],         // 4 bytes
     pub nonce: [u8; 4],        // 4 bytes
+    pub tx_hashes: Option<Vec<Vec<u8>>>,
 }
 
 impl Block {
@@ -24,6 +25,7 @@ impl Block {
         timestamp: u32,
         bits: [u8; 4],
         nonce: [u8; 4],
+        tx_hashes: Option<Vec<Vec<u8>>>,
     ) -> Self {
         Block {
             version,
@@ -32,6 +34,7 @@ impl Block {
             timestamp,
             bits,
             nonce,
+            tx_hashes,
         }
     }
 
@@ -65,6 +68,7 @@ impl Block {
             timestamp,
             bits,
             nonce,
+            tx_hashes: None,
         })
     }
 
@@ -125,6 +129,17 @@ impl Block {
         let proof = utils::little_endian_unit_to_int(hash.as_slice());
         Ok(proof < self.target()?)
     }
+
+    pub fn validate_merkle_root(&self) -> Result<bool> {
+        let mut current_hashes = self
+            .tx_hashes
+            .clone()
+            .context("current block does not have a list of TXs")?;
+        current_hashes.iter_mut().for_each(|h| h.reverse());
+        let mut root = merkle_root(current_hashes)?;
+        root.reverse();
+        Ok(root == self.merkle_root)
+    }
 }
 
 #[cfg(test)]
@@ -134,7 +149,7 @@ mod block_tests {
     use crate::utils;
 
     use super::Block;
-    use anyhow::{Context, Result};
+    use anyhow::{Context, Ok, Result};
     use num_bigint::BigUint;
     use tokio::io::BufReader;
 
@@ -276,6 +291,36 @@ mod block_tests {
         let first_block = Block::parse(&mut stream).await?;
         let new_bits = utils::calculate_new_bits(&last_block, &first_block)?;
         assert_eq!(hex::encode(new_bits), "80df6217");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_validate_merkle_root() -> Result<()> {
+        let hex_hashes = vec![
+            "f54cb69e5dc1bd38ee6901e4ec2007a5030e14bdd60afb4d2f3428c88eea17c1",
+            "c57c2d678da0a7ee8cfa058f1cf49bfcb00ae21eda966640e312b464414731c1",
+            "b027077c94668a84a5d0e72ac0020bae3838cb7f9ee3fa4e81d1eecf6eda91f3",
+            "8131a1b8ec3a815b4800b43dff6c6963c75193c4190ec946b93245a9928a233d",
+            "ae7d63ffcb3ae2bc0681eca0df10dda3ca36dedb9dbf49e33c5fbe33262f0910",
+            "61a14b1bbdcdda8a22e61036839e8b110913832efd4b086948a6a64fd5b3377d",
+            "fc7051c8b536ac87344c5497595d5d2ffdaba471c73fae15fe9228547ea71881",
+            "77386a46e26f69b3cd435aa4faac932027f58d0b7252e62fb6c9c2489887f6df",
+            "59cbc055ccd26a2c4c4df2770382c7fea135c56d9e75d3f758ac465f74c025b8",
+            "7c2bf5687f19785a61be9f46e031ba041c7f93e2b7e9212799d84ba052395195",
+            "08598eebd94c18b0d59ac921e9ba99e2b8ab7d9fccde7d44f2bd4d5e2e726d2e",
+            "f0bb99ef46b029dd6f714e4b12a7d796258c48fee57324ebdc0bbc4700753ab1",
+        ];
+        let tx_hashes: Vec<Vec<u8>> = hex_hashes
+            .iter()
+            .map(|tx| hex::decode(tx).unwrap())
+            .collect();
+
+        let block_raw = hex::decode("00000020fcb19f7895db08cadc9573e7915e3919fb76d59868a51d995201000000000000acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed691cfa85916ca061a00000000")?;
+        let cursor = Cursor::new(&block_raw);
+        let mut stream = BufReader::new(cursor);
+        let mut block = Block::parse(&mut stream).await?;
+        block.tx_hashes = Some(tx_hashes);
+        assert!(block.validate_merkle_root()?);
         Ok(())
     }
 }

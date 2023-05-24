@@ -432,12 +432,12 @@ impl HeadersMessage {
     }
 
     pub async fn parse<R: AsyncBufRead + Unpin>(stream: &mut R) -> Result<Self> {
-        let num_headers = read_varint_async(stream).await?;
+        let num_headers = utils::read_varint_async(stream).await?;
         let mut blocks: Vec<Block> = vec![];
         for _ in 0..num_headers {
             let p = Block::parse(stream).await?;
             blocks.push(p);
-            let num_txs = read_varint_async(stream).await?;
+            let num_txs = utils::read_varint_async(stream).await?;
             if num_txs != 0 {
                 bail!("number of txs not 0")
             }
@@ -446,30 +446,6 @@ impl HeadersMessage {
             command: b"headers".to_vec(),
             blocks,
         })
-    }
-}
-
-pub async fn read_varint_async<R: AsyncBufRead + Unpin>(stream: &mut R) -> Result<u64> {
-    let mut buffer = [0; 1];
-    stream.read_exact(&mut buffer).await?;
-    if buffer[0] == 0xfd {
-        let mut buffer = [0; 2];
-        stream.read_exact(&mut buffer).await?;
-        let num = u16::from_le_bytes(buffer) as u64;
-        Ok(num)
-    } else if buffer[0] == 0xfe {
-        let mut buffer = [0; 4];
-        stream.read_exact(&mut buffer).await?;
-        let num = u32::from_le_bytes(buffer) as u64;
-        Ok(num)
-    } else if buffer[0] == 0xff {
-        let mut buffer = [0; 8];
-        stream.read_exact(&mut buffer).await?;
-        let num = u64::from_le_bytes(buffer);
-        Ok(num)
-    } else {
-        let num = u8::from_le_bytes(buffer) as u64;
-        Ok(num)
     }
 }
 

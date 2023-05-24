@@ -13,7 +13,7 @@ use crate::{
     script::{Command, Script},
     utils,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 
 const BASE58_ALPHABET: &'static [u8] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -159,24 +159,54 @@ pub fn i32_to_little_endian(s: i32, limit: u64) -> Result<Vec<u8>> {
     Ok(buffer.to_vec())
 }
 
-pub fn read_varint<R: Read>(stream: &mut R) -> Result<BigInt> {
+
+pub fn read_varint<R: Read>(stream: &mut R) -> Result<u64> {
     let mut buffer = [0; 1];
     stream.read_exact(&mut buffer)?;
     if buffer[0] == 0xfd {
         let mut buffer = [0; 2];
         stream.read_exact(&mut buffer)?;
-        Ok(little_endian_to_int(&buffer))
+        cast_le_bytes_num_vec(buffer.to_vec())
     } else if buffer[0] == 0xfe {
         let mut buffer = [0; 4];
         stream.read_exact(&mut buffer)?;
-        Ok(little_endian_to_int(&buffer))
+        cast_le_bytes_num_vec(buffer.to_vec())
     } else if buffer[0] == 0xff {
         let mut buffer = [0; 8];
         stream.read_exact(&mut buffer)?;
-        Ok(little_endian_to_int(&buffer))
+        cast_le_bytes_num_vec(buffer.to_vec())
     } else {
-        Ok(little_endian_to_int(&buffer))
+        cast_le_bytes_num_vec(buffer.to_vec())
     }
+}
+
+pub fn cast_le_bytes_num_vec(length_buf: Vec<u8>) -> Result<u64> {
+    let length = if length_buf.len() == 2 {
+        u16::from_le_bytes(
+            length_buf
+                .try_into()
+                .map_err(|x| anyhow!("unable to parse u16 from {:?}", x))?,
+        ) as u64
+    } else if length_buf.len() == 4 {
+        u32::from_le_bytes(
+            length_buf
+                .try_into()
+                .map_err(|x| anyhow!("unable to parse u36 from {:?}", x))?,
+        ) as u64
+    } else if length_buf.len() == 8 {
+        u64::from_le_bytes(
+            length_buf
+                .try_into()
+                .map_err(|x| anyhow!("unable to parse u64 from {:?}", x))?,
+        )
+    } else {
+        u8::from_le_bytes(
+            length_buf
+                .try_into()
+                .map_err(|x| anyhow!("unable to parse u8 from {:?}", x))?,
+        ) as u64
+    };
+    Ok(length)
 }
 
 pub fn encode_varint(i: usize) -> Result<Vec<u8>> {
@@ -313,7 +343,10 @@ pub fn merkle_root(hashes: Vec<Vec<u8>>) -> Result<Vec<u8>> {
     while current_hashes.len() > 1 {
         current_hashes = merkle_parent_level(current_hashes)?;
     }
-    Ok(current_hashes.first().context("unable to get merkle root")?.to_vec())
+    Ok(current_hashes
+        .first()
+        .context("unable to get merkle root")?
+        .to_vec())
 }
 
 pub async fn read_varint_async<R: tokio::io::AsyncBufRead + Unpin>(stream: &mut R) -> Result<u64> {
@@ -343,7 +376,8 @@ pub async fn read_varint_async<R: tokio::io::AsyncBufRead + Unpin>(stream: &mut 
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{
-        decode_base58, encode_base58_checksum, h160_to_p2psh_address, merkle_parent, merkle_parent_level, merkle_root,
+        decode_base58, encode_base58_checksum, h160_to_p2psh_address, merkle_parent,
+        merkle_parent_level, merkle_root,
     };
 
     use super::{bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address};
@@ -439,9 +473,12 @@ mod utils_tests {
             "dff6879848c2c9b62fe652720b8df5272093acfaa45a43cdb3696fe2466a3877",
             "b825c0745f46ac58f7d3759e6dc535a1fec7820377f24d4c2c6ad2cc55c0cb59",
             "95513952a04bd8992721e9b7e2937f1c04ba31e0469fbe615a78197f68f52b7c",
-            "2e6d722e5e4dbdf2447ddecc9f7dabb8e299bae921c99ad5b0184cd9eb8e5908"
+            "2e6d722e5e4dbdf2447ddecc9f7dabb8e299bae921c99ad5b0184cd9eb8e5908",
         ];
-        let tx_hashes:Vec<Vec<u8>> = hex_hashes.iter().map(|tx| hex::decode(tx).unwrap()).collect();
+        let tx_hashes: Vec<Vec<u8>> = hex_hashes
+            .iter()
+            .map(|tx| hex::decode(tx).unwrap())
+            .collect();
         let want_hex_hashes = vec![
             "8b30c5ba100f6f2e5ad1e2a742e5020491240f8eb514fe97c713c31718ad7ecd",
             "7f4e6f9e224e20fda0ae4c44114237f97cd35aca38d83081c9bfd41feb907800",
@@ -450,7 +487,10 @@ mod utils_tests {
             "43e7274e77fbe8e5a42a8fb58f7decdb04d521f319f332d88e6b06f8e6c09e27",
             "1796cd3ca4fef00236e07b723d3ed88e1ac433acaaa21da64c4b33c946cf3d10",
         ];
-        let want_tx_hashes:Vec<Vec<u8>> = want_hex_hashes.iter().map(|tx| hex::decode(tx).unwrap()).collect();
+        let want_tx_hashes: Vec<Vec<u8>> = want_hex_hashes
+            .iter()
+            .map(|tx| hex::decode(tx).unwrap())
+            .collect();
         assert_eq!(merkle_parent_level(tx_hashes)?, want_tx_hashes);
         Ok(())
     }
@@ -469,10 +509,14 @@ mod utils_tests {
             "b825c0745f46ac58f7d3759e6dc535a1fec7820377f24d4c2c6ad2cc55c0cb59",
             "95513952a04bd8992721e9b7e2937f1c04ba31e0469fbe615a78197f68f52b7c",
             "2e6d722e5e4dbdf2447ddecc9f7dabb8e299bae921c99ad5b0184cd9eb8e5908",
-            "b13a750047bc0bdceb2473e5fe488c2596d7a7124b4e716fdd29b046ef99bbf0"
+            "b13a750047bc0bdceb2473e5fe488c2596d7a7124b4e716fdd29b046ef99bbf0",
         ];
-        let tx_hashes:Vec<Vec<u8>> = hex_hashes.iter().map(|tx| hex::decode(tx).unwrap()).collect();
-        let want_hash = hex::decode("acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed6")?;
+        let tx_hashes: Vec<Vec<u8>> = hex_hashes
+            .iter()
+            .map(|tx| hex::decode(tx).unwrap())
+            .collect();
+        let want_hash =
+            hex::decode("acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed6")?;
         assert_eq!(merkle_root(tx_hashes)?, want_hash);
         Ok(())
     }

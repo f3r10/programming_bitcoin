@@ -6,14 +6,12 @@ use std::{
     vec,
 };
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
-
 use crate::{
     op::{self, OpCodeFunctions},
     signature::SignatureHash,
     utils::{self, encode_varint},
 };
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -37,24 +35,22 @@ impl Script {
     pub fn parse<R: Read>(stream: &mut R) -> Result<Self> {
         let length = utils::read_varint(stream)?;
         let mut cmds: Vec<Command> = Vec::new();
-        let mut count = 0_u32;
-        let length_buf = length.to_signed_bytes_be();
-        let length = BigEndian::read_int(&length_buf, length_buf.len()) as u32;
+        let mut count = 0_u64;
         while count < length {
-            let mut current = vec![0; 1];
-            stream.read_exact(&mut current)?;
+            let mut current_buf = vec![0; 1];
+            stream.read_exact(&mut current_buf)?;
             count += 1;
-            let current_byte = current[0] as u32;
+            let current_byte = current_buf[0] as u32;
             if current_byte >= 1 && current_byte <= 75 {
                 let mut temp = vec![0; current_byte.try_into()?];
                 stream.read_exact(&mut temp)?;
                 let elem = Command::Element(temp);
                 cmds.push(elem);
-                count += current_byte;
+                count += u8::from_le_bytes(current_buf.try_into().unwrap()) as u64;
             } else if current_byte == 76 {
                 let mut temp = vec![0; 1];
                 stream.read_exact(&mut temp)?;
-                let data_length = LittleEndian::read_int(&temp, temp.len()) as u32;
+                let data_length = u8::from_le_bytes(temp.try_into().unwrap()) as u64;
                 let mut temp = vec![0; data_length.try_into()?];
                 stream.read_exact(&mut temp)?;
                 let elem = Command::Element(temp);
@@ -63,7 +59,7 @@ impl Script {
             } else if current_byte == 77 {
                 let mut temp = vec![0; 2];
                 stream.read_exact(&mut temp)?;
-                let data_length = LittleEndian::read_int(&temp, temp.len()) as u32;
+                let data_length = u16::from_le_bytes(temp.try_into().unwrap()) as u64;
                 let mut temp = vec![0; data_length.clone().try_into()?];
                 stream.read_exact(&mut temp)?;
                 let elem = Command::Element(temp);
@@ -76,7 +72,7 @@ impl Script {
             }
         }
         if count != length {
-            panic!("parsing script failed")
+            bail!("parsing script failed")
         }
 
         Ok(Script { cmds })

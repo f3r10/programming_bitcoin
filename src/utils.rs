@@ -373,6 +373,17 @@ pub async fn read_varint_async<R: tokio::io::AsyncBufRead + Unpin>(stream: &mut 
     }
 }
 
+pub fn bytes_to_bit_field(some_bytes: Vec<u8>) -> Vec<u8> {
+    let mut flag_bits: Vec<u8> = vec![];
+    for mut byte in some_bytes {
+        for _ in 0..8 {
+            flag_bits.push(byte & 1);
+            byte >>=1
+        }
+    }
+    flag_bits
+}
+
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{

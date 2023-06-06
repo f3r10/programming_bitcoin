@@ -159,7 +159,6 @@ pub fn i32_to_little_endian(s: i32, limit: u64) -> Result<Vec<u8>> {
     Ok(buffer.to_vec())
 }
 
-
 pub fn read_varint<R: Read>(stream: &mut R) -> Result<u64> {
     let mut buffer = [0; 1];
     stream.read_exact(&mut buffer)?;
@@ -378,7 +377,7 @@ pub fn bytes_to_bit_field(some_bytes: Vec<u8>) -> Vec<u8> {
     for mut byte in some_bytes {
         for _ in 0..8 {
             flag_bits.push(byte & 1);
-            byte >>=1
+            byte >>= 1
         }
     }
     flag_bits

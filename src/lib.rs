@@ -8,6 +8,7 @@ use s256_point::S256Point;
 pub mod block;
 pub mod finite_field;
 pub mod finite_field_point;
+pub mod merkle_tree;
 pub mod network;
 pub mod op;
 pub mod private_key;
@@ -19,7 +20,6 @@ pub mod signature;
 pub mod tx;
 pub mod tx_fetcher;
 pub mod utils;
-pub mod merkle_tree;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

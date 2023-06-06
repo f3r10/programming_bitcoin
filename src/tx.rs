@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use num_bigint::BigInt;
 
 use crate::{

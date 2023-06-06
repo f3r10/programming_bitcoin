@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
-use tokio::io::{AsyncBufRead, AsyncReadExt};
 use std::fmt::Display;
+use tokio::io::{AsyncBufRead, AsyncReadExt};
 
 use crate::utils;
 
@@ -178,9 +178,8 @@ impl MerkleBlock {
             flag_bits,
         }
     }
-    
-    pub async fn parse<R: AsyncBufRead + Unpin>(stream: &mut R) -> Result<Self> {
 
+    pub async fn parse<R: AsyncBufRead + Unpin>(stream: &mut R) -> Result<Self> {
         let mut version_buffer = [0; 4];
         let mut handle = stream.take(4);
         handle.read_exact(&mut version_buffer).await?;
@@ -231,7 +230,6 @@ impl MerkleBlock {
             hashes,
             flag_bits: flags_buffer,
         })
-
     }
 
     pub fn is_valid(&self) -> Result<bool> {
@@ -329,10 +327,12 @@ mod merkle_tree_tests {
         let mb = MerkleBlock::parse(&mut stream).await?;
         let version = 0x20000000;
         assert_eq!(mb.version, version);
-        let mut merkle_root_hex = hex::decode("ef445fef2ed495c275892206ca533e7411907971013ab83e3b47bd0d692d14d4")?;
+        let mut merkle_root_hex =
+            hex::decode("ef445fef2ed495c275892206ca533e7411907971013ab83e3b47bd0d692d14d4")?;
         merkle_root_hex.reverse();
         assert_eq!(mb.merkle_root.to_vec(), merkle_root_hex);
-        let mut prev_block_hex = hex::decode("df3b053dc46f162a9b00c7f0d5124e2676d47bbe7c5d0793a500000000000000")?;
+        let mut prev_block_hex =
+            hex::decode("df3b053dc46f162a9b00c7f0d5124e2676d47bbe7c5d0793a500000000000000")?;
         prev_block_hex.reverse();
         assert_eq!(mb.previous_block.to_vec(), prev_block_hex);
         let timestamp: u32 = u32::from_le_bytes(hex::decode("dc7c835b")?.try_into().unwrap());
@@ -341,7 +341,7 @@ mod merkle_tree_tests {
         assert_eq!(mb.bits.to_vec(), bits);
         let nonce = hex::decode("c157e670")?;
         assert_eq!(mb.nonce.to_vec(), nonce);
-        let total: u32 = u32::from_le_bytes(hex::decode("bf0d0000")?.try_into().unwrap()); 
+        let total: u32 = u32::from_le_bytes(hex::decode("bf0d0000")?.try_into().unwrap());
         assert_eq!(mb.num_total_tx, total);
         let hex_hashes = vec![
             "ba412a0d1480e370173072c9562becffe87aa661c1e4a6dbc305d38ec5dc088a",
@@ -358,7 +358,10 @@ mod merkle_tree_tests {
         let tx_hashes: Vec<Vec<u8>> = hex_hashes
             .iter()
             .map(|tx| hex::decode(tx).unwrap())
-            .map(|mut tx| {tx.reverse(); tx} )
+            .map(|mut tx| {
+                tx.reverse();
+                tx
+            })
             .collect();
         assert_eq!(mb.hashes, tx_hashes);
         let flags = hex::decode("b55635")?;

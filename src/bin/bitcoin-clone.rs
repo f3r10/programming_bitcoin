@@ -3,13 +3,14 @@ use std::io::Cursor;
 use anyhow::{bail, Context, Result};
 use bitcoin_clone::{
     finite_field::FiniteField,
+    merkle_tree::MerkleTree,
     op,
     private_key::PrivateKey,
     s256_field::S256Field,
     s256_point::S256Point,
     script::{Command, Script},
     signature::Signature,
-    utils, PointWrapper, G, N, merkle_tree::MerkleTree,
+    utils, PointWrapper, G, N,
 };
 use num_bigint::BigInt;
 
@@ -271,7 +272,10 @@ fn main() -> Result<()> {
         "c555bc5fc3bc096df0a0c9532f07640bfb76bfe4fc1ace214b8b228a1297a4c2",
         "f9dbfafc3af3400954975da24eb325e326960a25b87fffe23eef3e7ed2fb610e",
     ];
-    let tx_hashes:Vec<Vec<u8>> = hex_hashes.iter().map(|tx| hex::decode(tx).unwrap()).collect();
+    let tx_hashes: Vec<Vec<u8>> = hex_hashes
+        .iter()
+        .map(|tx| hex::decode(tx).unwrap())
+        .collect();
     let mut tree = MerkleTree::new(hex_hashes.len() as f32)?;
     tree.nodes[4] = tx_hashes.clone();
     tree.nodes[3] = utils::merkle_parent_level(tree.nodes[4].clone())?;
@@ -280,9 +284,8 @@ fn main() -> Result<()> {
     tree.nodes[0] = utils::merkle_parent_level(tree.nodes[1].clone())?;
     println!("{}", tree);
 
-
     let mut tree2 = MerkleTree::new(hex_hashes.len() as f32)?;
-    tree2.nodes[4] =tx_hashes;
+    tree2.nodes[4] = tx_hashes;
     while tree2.root().len() == 1 {
         if tree2.is_leaf() {
             tree2.up();

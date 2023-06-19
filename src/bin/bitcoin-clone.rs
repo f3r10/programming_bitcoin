@@ -1,6 +1,6 @@
-use std::io::Cursor;
+use std::{io::Cursor, ops::Rem};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bitcoin_clone::{
     finite_field::FiniteField,
     merkle_tree::MerkleTree,
@@ -12,7 +12,7 @@ use bitcoin_clone::{
     signature::Signature,
     utils, PointWrapper, G, N,
 };
-use num_bigint::BigInt;
+use num_bigint::{BigInt, BigUint};
 
 fn main() -> Result<()> {
     println!("(17, 64) over F_103 -> {}", check(17, 64, 103));
@@ -303,6 +303,43 @@ fn main() -> Result<()> {
         }
     }
     println!("{}", tree2);
+
+    println!("=====exercise chapter11:1=======");
+    let bit_field_size = 10;
+    let mut bit_field = vec![0; bit_field_size];
+    let items = vec!["hello world", "goodbye"];
+    for item in items {
+        let h = utils::hash160(item.as_bytes());
+        let bytes = BigUint::from_bytes_be(&h)
+            .rem(bit_field_size as u64)
+            .to_bytes_be();
+        let bit = u8::from_be_bytes(
+            bytes
+                .try_into()
+                .map_err(|e| anyhow!("unable to get a bit from {:x?}", e))?,
+        );
+        bit_field[bit as usize] = 1;
+    }
+    println!("{:?}", bit_field);
+
+    println!("=====exercise chapter11:2=======");
+    let field_size = 10;
+    let function_count = 5_u64;
+    let tweak = 99;
+    let items = vec!["Hello World", "Goodbye!"];
+    let bit_field_size = field_size * 8;
+    let mut bit_field = vec![0; bit_field_size];
+    let bip37_constant = 0xfba4c795_u64;
+    for item in items {
+        for i in 0..function_count {
+            let seed = i * bip37_constant + tweak;
+            let h = utils::murmur3_64_seeded(item, seed);
+            let bit = h.rem(bit_field_size as u64);
+            bit_field[bit as usize] = 1;
+        }
+    }
+    println!("{}", hex::encode(utils::bit_field_to_bytes(bit_field)?));
+
     Ok(())
 }
 

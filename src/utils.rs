@@ -1,5 +1,5 @@
 use core::panic;
-use std::io::Read;
+use std::{io::Read, ops::Rem};
 
 use byteorder::{ByteOrder, LittleEndian};
 use num_bigint::{BigInt, BigUint};
@@ -383,14 +383,104 @@ pub fn bytes_to_bit_field(some_bytes: Vec<u8>) -> Vec<u8> {
     flag_bits
 }
 
+pub fn bit_field_to_bytes(some_bytes: Vec<u8>) -> Result<Vec<u8>> {
+    if some_bytes.len().rem(8) != 0 {
+        bail!("bit_field does not have a length that is divisible by 8")
+    }
+    let size = some_bytes.len() / 8;
+    let mut result = vec![0; size];
+    for (i, bit) in some_bytes.iter().enumerate() {
+        let (byte_index, bit_index) = i.div_mod_floor(&8);
+        if bit == &1_u8 {
+            result[byte_index] |= 1 << bit_index;
+        }
+    }
+    Ok(result)
+}
+
+// based on https://github.com/jonalmeida/bloom-filter/blob/master/src/murmur3.rs
+// although bip37 is already dead: https://bitcoin.stackexchange.com/questions/109795/size-of-seed-used-in-murmur3-hash-bip0037
+pub fn murmur3_64_seeded(key: &str, seed: u64) -> u64 {
+    let c1 = 0xcc9e2d51;
+    let c2 = 0x1b873593;
+    let r1: u32 = 15;
+    let r2: u32 = 13;
+    let m: u32 = 5;
+    let n = 0xe6546b64;
+
+    let mut hash = seed;
+    let key_bytes: &[u8] = key.as_bytes();
+    let len = key_bytes.len();
+
+    for byte_index in (0..len).step_by(4) {
+        // Check against len -1 since we index from 0
+        if (byte_index + 3) <= (len - 1) {
+            // Slice is from [x, y) so we'll use byte_index, byte_index +4
+            let mut chunk = key_bytes_to_u32_chunk(&key_bytes[byte_index..byte_index + 4]);
+            chunk = chunk.wrapping_mul(c1);
+            chunk = (chunk << r1) | ((chunk & 0xffffffff) >> 17);
+            chunk = chunk.wrapping_mul(c2);
+
+            hash = hash ^ (chunk as u64);
+            hash = (hash << r2) | ((hash & 0xffffffff) >> 19);
+            hash = (hash.wrapping_mul(m as u64)).wrapping_add(n);
+        } else {
+            // If we have less than four...
+            // Make sure to slice to len + 1 to cover the final byte
+            let mut chunk = key_bytes_to_u32_chunk(&key_bytes[byte_index..len]);
+
+            chunk = chunk.wrapping_mul(c1);
+            chunk = (chunk << r1) | ((chunk & 0xffffffff) >> 17);
+            chunk = chunk.wrapping_mul(c2);
+
+            hash = hash ^ (chunk as u64);
+        }
+    }
+
+    hash = hash ^ (len as u64);
+    hash = hash ^ ((hash & 0xffffffff) >> 16);
+    hash = hash.wrapping_mul(0x85ebca6b);
+    hash = hash ^ ((hash & 0xffffffff) >> 13);
+    hash = hash.wrapping_mul(0xc2b2ae35);
+    hash = hash ^ ((hash & 0xffffffff) >> 16);
+
+    return hash & 0xffffffff;
+}
+
+/// Convert a 4 byte chunk, `bytes` to a u32 so that we can
+/// perform arithmetic operations on it.
+/// Returns: u32
+fn key_bytes_to_u32_chunk(bytes: &[u8]) -> u32 {
+    let chunk: u32 = match bytes.len() {
+        4 => {
+            (((bytes[3] as u32) << 24)
+                + ((bytes[2] as u32) << 16)
+                + ((bytes[1] as u32) << 8)
+                + (bytes[0] as u32)) as u32
+        }
+
+        // TODO: Ensure that we're dealing with LE architecture,
+        // if not flip the bytes
+        3 => (((bytes[2] as u32) << 16) + ((bytes[1] as u32) << 8) + (bytes[0] as u32)) as u32,
+
+        2 => (((bytes[1] as u32) << 8) + (bytes[0] as u32)) as u32,
+
+        1 => bytes[0] as u32,
+
+        _ => 0,
+    };
+
+    return chunk;
+}
+
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{
         decode_base58, encode_base58_checksum, h160_to_p2psh_address, merkle_parent,
-        merkle_parent_level, merkle_root,
+        merkle_parent_level, merkle_root, bytes_to_bit_field,
     };
 
-    use super::{bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address};
+    use super::{bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address, bit_field_to_bytes};
     use anyhow::{Ok, Result};
 
     #[test]
@@ -528,6 +618,19 @@ mod utils_tests {
         let want_hash =
             hex::decode("acbcab8bcc1af95d8d563b77d24c3d19b18f1486383d75a5085c4e86c86beed6")?;
         assert_eq!(merkle_root(tx_hashes)?, want_hash);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bit_field_to_bytes() -> Result<()> {
+        let bit_field = [
+            0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0,
+            0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+            0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+        ];
+        let want = "4000600a080000010940";
+        assert_eq!(hex::encode(bit_field_to_bytes(bit_field.to_vec())?), want);
+        assert_eq!(bytes_to_bit_field(hex::decode(want).unwrap()), bit_field.to_vec());
         Ok(())
     }
 }

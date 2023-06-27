@@ -14,7 +14,8 @@ use bitcoin_clone::{
 };
 use num_bigint::{BigInt, BigUint};
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     println!("(17, 64) over F_103 -> {}", check(17, 64, 103));
     println!("(192, 105) over F_223 -> {}", check(192, 105, 223));
     println!("(17, 56) over F_223 -> {}", check(17, 56, 223));
@@ -202,7 +203,7 @@ fn main() -> Result<()> {
     let combined_script = script_sig + script_pub_key;
     println!(
         "eval script: {}",
-        combined_script.evaluate(Signature::signature_hash(""))?
+        combined_script.evaluate(Signature::signature_hash("")).await?
     );
     println!("=====exercise chapter6:4=======");
     let script_pub_key = Script::new(Some(vec![
@@ -222,7 +223,7 @@ fn main() -> Result<()> {
     let combined_script = script_sig + script_pub_key;
     println!(
         "checking collision: {}",
-        combined_script.evaluate(Signature::signature_hash(""))?
+        combined_script.evaluate(Signature::signature_hash("")).await?
     );
 
     let modified_tx = hex::decode("0100000001868278ed6ddfb6c1ed3ad5f8181eb0c7a385aa0836f01d5e4789e6bd304d87221a000000475221022626e955ea6ea6d98850c994f9107b036b1334f18ca8830bfff1295d21cfdb702103b287eaf122eea69030a0e9feed096bed8045c8b98bec453e1ffac7fbdbd4bb7152aeffffffff04d3b11400000000001976a914904a49878c0adfc3aa05de7afad2cc15f483a56a88ac7f400900000000001976a914418327e3f3dda4cf5b9089325a4b95abdfa0334088ac722c0c00000000001976a914ba35042cfe9fc66fd35ac2224eebdafd1028ad2788acdc4ace020000000017a91474d691da1574e6b3c192ecfb52cc8984ee7b6c56870000000001000000")?;
@@ -333,7 +334,7 @@ fn main() -> Result<()> {
     for item in items {
         for i in 0..function_count {
             let seed = i * bip37_constant + tweak;
-            let h = utils::murmur3_64_seeded(item, seed);
+            let h = utils::murmur3_64_seeded(item.as_bytes(), seed);
             let bit = h.rem(bit_field_size as u64);
             bit_field[bit as usize] = 1;
         }

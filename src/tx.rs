@@ -1,11 +1,12 @@
 use std::{
     fmt::Display,
-    io::{Cursor, Read, Seek},
+    io::Cursor,
 };
 
 use anyhow::{Context, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use num_bigint::BigInt;
+use tokio::io::{AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
 use crate::{
     op::OpCodeFunctions,
@@ -56,36 +57,36 @@ impl Tx {
         }
     }
 
-    pub fn parse<R: Read + Seek>(stream: &mut R, testnet: bool) -> Result<Self> {
+    pub async fn parse<R: tokio::io::AsyncBufRead + Unpin + AsyncSeek>(stream: &mut R, testnet: bool) -> Result<Self> {
         let mut buffer = [0; 4];
 
         let mut handle = stream.take(4);
-        handle.read(&mut buffer)?;
+        handle.read_exact(&mut buffer).await?;
         let version = LittleEndian::read_u32(&buffer); // utils::little_endian_to_int(&amount_buffer);
-        let pos = stream.stream_position()?;
+        let pos = stream.stream_position().await?;
 
         // The next two bytes represents if the TX is segwit
         // Not all TX's have this mark so if not, it is necessary to restart the position.
         // TODO handle segwit correctly
         let mut buffer = [0; 2];
         let mut handle = stream.take(2);
-        handle.read(&mut buffer)?;
+        handle.read_exact(&mut buffer).await?;
         if buffer == [0_u8, 1_u8] {
         } else {
-            stream.seek(std::io::SeekFrom::Start(pos))?;
+            stream.seek(std::io::SeekFrom::Start(pos)).await?;
         }
-        let num_inputs = utils::read_varint(stream)?;
+        let num_inputs = utils::read_varint_async(stream).await?;
         let mut inputs: Vec<TxIn> = Vec::new();
         for _ in 0..num_inputs {
-            inputs.push(TxIn::parse(stream)?)
+            inputs.push(TxIn::parse(stream).await?)
         }
-        let num_outputs = utils::read_varint(stream)?;
+        let num_outputs = utils::read_varint_async(stream).await?;
         let mut outputs: Vec<TxOut> = Vec::new();
         for _ in 0..num_outputs {
-            outputs.push(TxOut::parse(stream)?)
+            outputs.push(TxOut::parse(stream).await?)
         }
         let mut locktime_buffer = [0; 4];
-        stream.read_exact(&mut locktime_buffer)?;
+        stream.read_exact(&mut locktime_buffer).await?;
         let locktime = LittleEndian::read_u32(&locktime_buffer);
         Ok(Tx {
             version,
@@ -113,10 +114,10 @@ impl Tx {
         Ok(result.concat())
     }
 
-    pub fn fee(&self, testnet: bool) -> Result<BigInt> {
+    pub async fn fee(&self, testnet: bool) -> Result<BigInt> {
         let mut tx_ins_total = BigInt::from(0);
         for tx_in in &self.tx_ins {
-            tx_ins_total += tx_in.value(testnet)?;
+            tx_ins_total += tx_in.value(testnet).await?;
         }
 
         let mut tx_outs_total = BigInt::from(0);
@@ -126,7 +127,7 @@ impl Tx {
         Ok(tx_ins_total - tx_outs_total)
     }
 
-    pub fn sig_hash(&self, input_index: usize, redeem_script: Option<Script>) -> Result<BigInt> {
+    pub async fn sig_hash(&self, input_index: usize, redeem_script: Option<Script>) -> Result<BigInt> {
         let mut s = self.version.to_le_bytes().to_vec();
         s.append(&mut utils::encode_varint(self.tx_ins.len())?);
         for (i, tx_in) in self.tx_ins.iter().enumerate() {
@@ -134,7 +135,7 @@ impl Tx {
             if i == input_index {
                 match redeem_script.as_ref() {
                     Some(redeem) => script_sig = Some(redeem.clone()),
-                    None => script_sig = Some(tx_in.script_pubkey(self.testnet)?),
+                    None => script_sig = Some(tx_in.script_pubkey(self.testnet).await?),
                 }
             } else {
                 script_sig = None;
@@ -162,9 +163,9 @@ impl Tx {
         return Ok(BigInt::from_bytes_be(num_bigint::Sign::Plus, &hash));
     }
 
-    pub fn verify_input(&self, input_index: usize) -> Result<bool> {
+    pub async fn verify_input(&self, input_index: usize) -> Result<bool> {
         let tx_in = &self.tx_ins[input_index];
-        let script_pubkey = tx_in.script_pubkey(self.testnet)?;
+        let script_pubkey = tx_in.script_pubkey(self.testnet).await?;
         let redeem_script: Option<Script>;
         if script_pubkey.is_p2sh_script_pubkey() {
             // OP_0 , SIG1, SIG2, ..., RedeemScript
@@ -181,27 +182,27 @@ impl Tx {
             };
             let raw_redeem = [utils::encode_varint(cmd.len())?, cmd.to_vec()].concat();
             let mut raw_redeem_cursor = Cursor::new(raw_redeem);
-            redeem_script = Some(Script::parse(&mut raw_redeem_cursor)?);
+            redeem_script = Some(Script::parse(&mut raw_redeem_cursor).await?);
         } else {
             redeem_script = None
         }
-        let sig_hash = self.sig_hash(input_index, redeem_script)?;
+        let sig_hash = self.sig_hash(input_index, redeem_script).await?;
         let z = Signature::signature_hash_from_int(sig_hash);
         match tx_in.script_sig.clone() {
             Some(script_sig) => {
                 let combined = script_sig + script_pubkey;
-                combined.evaluate(z)
+                combined.evaluate(z).await
             }
             None => Ok(false),
         }
     }
 
-    pub fn verify(&self) -> Result<bool> {
-        if self.fee(self.testnet)? < BigInt::from(0) {
+    pub async fn verify(&self) -> Result<bool> {
+        if self.fee(self.testnet).await? < BigInt::from(0) {
             return Ok(false);
         } else {
             for i in 0..self.tx_ins.len() {
-                if !self.verify_input(i)? {
+                if !self.verify_input(i).await? {
                     return Ok(false);
                 }
             }
@@ -209,7 +210,7 @@ impl Tx {
         return Ok(true);
     }
 
-    fn id(&self) -> Result<String> {
+    pub fn id(&self) -> Result<String> {
         Ok(hex::encode(self.hash()?))
     }
 
@@ -219,8 +220,8 @@ impl Tx {
         Ok(a)
     }
 
-    pub fn sign_input(&mut self, input_index: usize, private_key: PrivateKey) -> Result<bool> {
-        let z = self.sig_hash(input_index, None)?;
+    pub async fn sign_input(&mut self, input_index: usize, private_key: PrivateKey) -> Result<bool> {
+        let z = self.sig_hash(input_index, None).await?;
         let sign = private_key.sign(&Signature::signature_hash_from_int(z), None)?;
         let mut der_sighash = sign.der()?;
         der_sighash.append(&mut utils::u32_to_little_endian(
@@ -234,7 +235,7 @@ impl Tx {
             Command::Element(sec),
         ]));
         self.tx_ins[input_index].script_sig = Some(script_sig);
-        self.verify_input(input_index)
+        self.verify_input(input_index).await
     }
 
     pub fn is_coinbase(&self) -> bool {
@@ -303,16 +304,16 @@ impl TxIn {
         }
     }
 
-    pub fn parse<R: Read>(stream: &mut R) -> Result<Self> {
+    pub async fn parse<R: tokio::io::AsyncBufRead + Unpin>(stream: &mut R) -> Result<Self> {
         let mut prev_tx_buffer = [0; 32];
-        stream.read_exact(&mut prev_tx_buffer)?;
+        stream.read_exact(&mut prev_tx_buffer).await?;
         prev_tx_buffer.reverse(); // because is little endian
         let mut prev_tx_index_buffer = [0; 4];
-        stream.read_exact(&mut prev_tx_index_buffer)?;
+        stream.read_exact(&mut prev_tx_index_buffer).await?;
         let prev_index = LittleEndian::read_u32(&prev_tx_index_buffer);
-        let script_sig = Script::parse(stream)?;
+        let script_sig = Script::parse(stream).await?;
         let mut sequence_buffer = [0; 4];
-        stream.read_exact(&mut sequence_buffer)?;
+        stream.read_exact(&mut sequence_buffer).await?;
         let sequence = LittleEndian::read_u32(&sequence_buffer);
         Ok(TxIn {
             prev_tx: prev_tx_buffer.to_vec(),
@@ -339,20 +340,20 @@ impl TxIn {
         Ok(result.concat())
     }
 
-    pub fn fetch_tx(&self, testnet: bool) -> Result<Tx> {
+    pub async fn fetch_tx(&self, testnet: bool) -> Result<Tx> {
         let mut tx_fetcher = TxFetcher::new();
-        tx_fetcher.fetch(&hex::encode(self.prev_tx.clone()), testnet, false)
+        tx_fetcher.fetch(&hex::encode(self.prev_tx.clone()), testnet, false).await
     }
 
-    pub fn value(&self, testnet: bool) -> Result<u64> {
-        let tx = self.fetch_tx(testnet)?;
+    pub async fn value(&self, testnet: bool) -> Result<u64> {
+        let tx = self.fetch_tx(testnet).await?;
         let index = self.prev_index as usize;
         Ok(tx.tx_outs[index].amount.clone())
     }
 
     /// Fetch the TX
-    pub fn script_pubkey(&self, testnet: bool) -> Result<Script> {
-        let tx = self.fetch_tx(testnet)?;
+    pub async fn script_pubkey(&self, testnet: bool) -> Result<Script> {
+        let tx = self.fetch_tx(testnet).await?;
         let index = self.prev_index as usize;
         Ok(tx.tx_outs[index].script_pubkey.clone())
     }
@@ -377,11 +378,11 @@ impl TxOut {
         }
     }
 
-    pub fn parse<R: Read>(stream: &mut R) -> Result<Self> {
+    pub async fn parse<R: tokio::io::AsyncBufRead + Unpin>(stream: &mut R) -> Result<Self> {
         let mut amount_buffer = [0; 8];
-        stream.read_exact(&mut amount_buffer)?;
+        stream.read_exact(&mut amount_buffer).await?;
         let amount = LittleEndian::read_u64(&amount_buffer); // utils::little_endian_to_int(&amount_buffer);
-        let script_pubkey = Script::parse(stream)?;
+        let script_pubkey = Script::parse(stream).await?;
         Ok(TxOut {
             amount,
             script_pubkey,
@@ -422,21 +423,21 @@ mod tx_tests {
     use super::Tx;
     use anyhow::{Context, Ok, Result};
 
-    #[test]
-    fn test_tx_version() -> Result<()> {
+    #[tokio::test]
+    async fn test_tx_version() -> Result<()> {
         let raw_tx = hex::decode("0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600")?;
         let mut stream = Cursor::new(raw_tx);
-        let tx = Tx::parse(&mut stream, false)?;
+        let tx = Tx::parse(&mut stream, false).await?;
         assert_eq!(tx.version, 1);
         Ok(())
     }
 
-    #[test]
-    fn test_parse_inputs() -> Result<()> {
+    #[tokio::test]
+    async fn test_parse_inputs() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
         assert_eq!(tx.tx_ins.len(), 1);
         assert_eq!(tx.tx_ins[0].prev_index, 0);
         assert_eq!(
@@ -454,12 +455,12 @@ mod tx_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_parse_outputs() -> Result<()> {
+    #[tokio::test]
+    async fn test_parse_outputs() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
         assert_eq!(tx.tx_outs.len(), 2);
         assert_eq!(tx.tx_outs[0].amount, 32454049_u64);
         assert_eq!(
@@ -474,32 +475,32 @@ mod tx_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_parse_locktime() -> Result<()> {
+    #[tokio::test]
+    async fn test_parse_locktime() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
         assert_eq!(tx.locktime, 410393);
         Ok(())
     }
 
-    #[test]
-    fn test_tx_serialize() -> Result<()> {
+    #[tokio::test]
+    async fn test_tx_serialize() -> Result<()> {
         let tx = "010000000456919960ac691763688d3d3bcea9ad6ecaf875df5339e148a1fc61c6ed7a069e010000006a47304402204585bcdef85e6b1c6af5c2669d4830ff86e42dd205c0e089bc2a821657e951c002201024a10366077f87d6bce1f7100ad8cfa8a064b39d4e8fe4ea13a7b71aa8180f012102f0da57e85eec2934a82a585ea337ce2f4998b50ae699dd79f5880e253dafafb7feffffffeb8f51f4038dc17e6313cf831d4f02281c2a468bde0fafd37f1bf882729e7fd3000000006a47304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a7160121035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937feffffff567bf40595119d1bb8a3037c356efd56170b64cbcc160fb028fa10704b45d775000000006a47304402204c7c7818424c7f7911da6cddc59655a70af1cb5eaf17c69dadbfc74ffa0b662f02207599e08bc8023693ad4e9527dc42c34210f7a7d1d1ddfc8492b654a11e7620a0012102158b46fbdff65d0172b7989aec8850aa0dae49abfb84c81ae6e5b251a58ace5cfeffffffd63a5e6c16e620f86f375925b21cabaf736c779f88fd04dcad51d26690f7f345010000006a47304402200633ea0d3314bea0d95b3cd8dadb2ef79ea8331ffe1e61f762c0f6daea0fabde022029f23b3e9c30f080446150b23852028751635dcee2be669c2a1686a4b5edf304012103ffd6f4a67e94aba353a00882e563ff2722eb4cff0ad6006e86ee20dfe7520d55feffffff0251430f00000000001976a914ab0c0b2e98b1ab6dbf67d4750b0a56244948a87988ac005a6202000000001976a9143c82d7df364eb6c75be8c80df2b3eda8db57397088ac46430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode.clone());
-        let tx = Tx::parse(&mut cursor_tx, false)?;
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
         assert_eq!(tx_encode, tx.serialize()?);
         Ok(())
     }
 
-    #[test]
-    fn test_long_tx() -> Result<()> {
+    #[tokio::test]
+    async fn test_long_tx() -> Result<()> {
         let tx = "010000000456919960ac691763688d3d3bcea9ad6ecaf875df5339e148a1fc61c6ed7a069e010000006a47304402204585bcdef85e6b1c6af5c2669d4830ff86e42dd205c0e089bc2a821657e951c002201024a10366077f87d6bce1f7100ad8cfa8a064b39d4e8fe4ea13a7b71aa8180f012102f0da57e85eec2934a82a585ea337ce2f4998b50ae699dd79f5880e253dafafb7feffffffeb8f51f4038dc17e6313cf831d4f02281c2a468bde0fafd37f1bf882729e7fd3000000006a47304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a7160121035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937feffffff567bf40595119d1bb8a3037c356efd56170b64cbcc160fb028fa10704b45d775000000006a47304402204c7c7818424c7f7911da6cddc59655a70af1cb5eaf17c69dadbfc74ffa0b662f02207599e08bc8023693ad4e9527dc42c34210f7a7d1d1ddfc8492b654a11e7620a0012102158b46fbdff65d0172b7989aec8850aa0dae49abfb84c81ae6e5b251a58ace5cfeffffffd63a5e6c16e620f86f375925b21cabaf736c779f88fd04dcad51d26690f7f345010000006a47304402200633ea0d3314bea0d95b3cd8dadb2ef79ea8331ffe1e61f762c0f6daea0fabde022029f23b3e9c30f080446150b23852028751635dcee2be669c2a1686a4b5edf304012103ffd6f4a67e94aba353a00882e563ff2722eb4cff0ad6006e86ee20dfe7520d55feffffff0251430f00000000001976a914ab0c0b2e98b1ab6dbf67d4750b0a56244948a87988ac005a6202000000001976a9143c82d7df364eb6c75be8c80df2b3eda8db57397088ac46430600";
         let tx_bytes = hex::decode(tx)?;
         let mut reader_mem = Cursor::new(tx_bytes);
-        let tx_parsed = Tx::parse(&mut reader_mem, false)?;
+        let tx_parsed = Tx::parse(&mut reader_mem, false).await?;
         //TODO add these tests when Script has a display impl
         // assert_eq!("304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a71601035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937", hex::encode(tx_parsed.tx_ins[1].script_sig));
         // assert_eq!("", hex::encode(tx_parsed.tx_outs[0].script_pubkey.serialize()));
@@ -507,39 +508,39 @@ mod tx_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_fee_tx() -> Result<()> {
+    #[tokio::test]
+    async fn test_fee_tx() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
-        assert_eq!(tx.fee(false)?, BigInt::from(40000));
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        assert_eq!(tx.fee(false).await?, BigInt::from(40000));
 
         let tx = "010000000456919960ac691763688d3d3bcea9ad6ecaf875df5339e148a1fc61c6ed7a069e010000006a47304402204585bcdef85e6b1c6af5c2669d4830ff86e42dd205c0e089bc2a821657e951c002201024a10366077f87d6bce1f7100ad8cfa8a064b39d4e8fe4ea13a7b71aa8180f012102f0da57e85eec2934a82a585ea337ce2f4998b50ae699dd79f5880e253dafafb7feffffffeb8f51f4038dc17e6313cf831d4f02281c2a468bde0fafd37f1bf882729e7fd3000000006a47304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a7160121035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937feffffff567bf40595119d1bb8a3037c356efd56170b64cbcc160fb028fa10704b45d775000000006a47304402204c7c7818424c7f7911da6cddc59655a70af1cb5eaf17c69dadbfc74ffa0b662f02207599e08bc8023693ad4e9527dc42c34210f7a7d1d1ddfc8492b654a11e7620a0012102158b46fbdff65d0172b7989aec8850aa0dae49abfb84c81ae6e5b251a58ace5cfeffffffd63a5e6c16e620f86f375925b21cabaf736c779f88fd04dcad51d26690f7f345010000006a47304402200633ea0d3314bea0d95b3cd8dadb2ef79ea8331ffe1e61f762c0f6daea0fabde022029f23b3e9c30f080446150b23852028751635dcee2be669c2a1686a4b5edf304012103ffd6f4a67e94aba353a00882e563ff2722eb4cff0ad6006e86ee20dfe7520d55feffffff0251430f00000000001976a914ab0c0b2e98b1ab6dbf67d4750b0a56244948a87988ac005a6202000000001976a9143c82d7df364eb6c75be8c80df2b3eda8db57397088ac46430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
-        assert_eq!(tx.fee(false)?, BigInt::from(140500));
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        assert_eq!(tx.fee(false).await?, BigInt::from(140500));
         Ok(())
     }
 
-    #[test]
-    fn test_fee_positive_tx() -> Result<()> {
+    #[tokio::test]
+    async fn test_fee_positive_tx() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
-        assert!(tx.fee(false)? > BigInt::from(0));
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        assert!(tx.fee(false).await? > BigInt::from(0));
         Ok(())
     }
 
-    #[test]
-    fn test_sig_hash_and_verify_input() -> Result<()> {
+    #[tokio::test]
+    async fn test_sig_hash_and_verify_input() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
-        let tx_sig_hash = tx.sig_hash(0, None)?;
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        let tx_sig_hash = tx.sig_hash(0, None).await?;
         assert_eq!(
             "18037338614366229343027734445863508930887653120159589908930024158807354868134",
             tx_sig_hash.to_string()
@@ -557,23 +558,23 @@ mod tx_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_tx_verify() -> Result<()> {
+    #[tokio::test]
+    async fn test_tx_verify() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false)?;
-        assert!(tx.verify()?);
+        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        assert!(tx.verify().await?);
         Ok(())
     }
 
-    #[test]
-    fn test_tx_signing() -> Result<()> {
+    #[tokio::test]
+    async fn test_tx_signing() -> Result<()> {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let mut tx = Tx::parse(&mut cursor_tx, false)?;
-        let z = tx.sig_hash(0, None)?;
+        let mut tx = Tx::parse(&mut cursor_tx, false).await?;
+        let z = tx.sig_hash(0, None).await?;
         let private_key =
             PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(8675309)))?;
         let mut der_sighash = private_key
@@ -593,19 +594,20 @@ mod tx_tests {
         Ok(())
     }
 
-    #[test]
-    fn test_tx_sign_input() -> Result<()> {
+    #[tokio::test]
+    async fn test_tx_sign_input() -> Result<()> {
         let tx = "010000000199a24308080ab26e6fb65c4eccfadf76749bb5bfa8cb08f291320b3c21e56f0d0d00000000ffffffff02408af701000000001976a914d52ad7ca9b3d096a38e752c2018e6fbc40cdf26f88ac80969800000000001976a914507b27411ccf7f16f10297de6cef3f291623eddf88ac00000000";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let mut tx = Tx::parse(&mut cursor_tx, true)?;
+        let mut tx = Tx::parse(&mut cursor_tx, true).await?;
         let private_key =
             PrivateKey::new(&PrivateKey::generate_simple_secret(BigInt::from(8675309)))?;
-        assert!(tx.sign_input(0, private_key)?);
+        assert!(tx.sign_input(0, private_key).await?);
         Ok(())
     }
-    #[test]
-    fn test_tx_with_two_inputs_and_one_output() -> Result<()> {
+
+    #[tokio::test]
+    async fn test_tx_with_two_inputs_and_one_output() -> Result<()> {
         let want = "0100000002cca175bc8125f679bf21d76c3da4d08952f0ddc63dbe9d7f916306d7b0467517000000006b483045022100bd4a9297d5b000232f01093e8c4fec035b99ebef5de38e073ceded393c8488e3022079661ab7aa3f55ff37e2819029ed50eba163f24a44451d4eaa169f28a832b0ac012102a39eecbb9f8c6de1efec44c51e2e580dd790c2bd35e6fa1c9564ab7d794e3143ffffffff3bfe2faa0d5d64608ebe8dea810962bb35e1a29f8e35940f1e2787695355d13f010000006b483045022100c07f377818e8daa37bbfef1530694e85739df3a87819fcc0482891bacc6d6ef402206b7df12af9ff2fadad6815f157ede3a14d8e972a75f1586849ce18693766cf4e012102a39eecbb9f8c6de1efec44c51e2e580dd790c2bd35e6fa1c9564ab7d794e3143ffffffff0187611a00000000001976a914d5985c6d780579b61f9bff365a689b4fa2ec528988ac00000000";
 
         let prev_tx_faucet =
@@ -628,78 +630,78 @@ mod tx_tests {
         tx_outs.push(TxOut::new(target_satoshis, script_pubkey));
         let mut tx_obj = Tx::new(1, tx_ins, tx_outs, 0, true);
         // each may have different private keys to unlock the ScriptPubKey
-        assert!(tx_obj.sign_input(0, priva.clone())?);
-        assert!(tx_obj.sign_input(1, priva.clone())?);
+        assert!(tx_obj.sign_input(0, priva.clone()).await?);
+        assert!(tx_obj.sign_input(1, priva.clone()).await?);
         assert_eq!(want, hex::encode(tx_obj.serialize()?));
         Ok(())
     }
 
-    #[test]
-    fn test_sig_hash() -> Result<()> {
+    #[tokio::test]
+    async fn test_sig_hash() -> Result<()> {
         let mut fetcher = TxFetcher::new();
         let tx = fetcher.fetch(
             "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
             false,
             true,
-        )?;
+        ).await?;
         let want = BigInt::parse_bytes(
             b"27e0c5994dec7824e56dec6b2fcb342eb7cdb0d0957c2fce9882f715e85d81a6",
             16,
         )
         .context("unable to parse bytes to bigint")?;
-        assert_eq!(tx.sig_hash(0, None)?, want);
+        assert_eq!(tx.sig_hash(0, None).await?, want);
         Ok(())
     }
 
-    #[test]
-    fn test_verify_p2sh() -> Result<()> {
+    #[tokio::test]
+    async fn test_verify_p2sh() -> Result<()> {
         let mut fetcher = TxFetcher::new();
         let tx = fetcher.fetch(
             "46df1a9484d0a81d03ce0ee543ab6e1a23ed06175c104a178268fad381216c2b",
             false,
             true,
-        )?;
-        assert!(tx.verify()?);
+        ).await?;
+        assert!(tx.verify().await?);
         Ok(())
     }
 
-    #[test]
-    fn test_verify_p2pkh() -> Result<()> {
+    #[tokio::test]
+    async fn test_verify_p2pkh() -> Result<()> {
         let mut fetcher = TxFetcher::new();
         let tx = fetcher.fetch(
             "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
             false,
             true,
-        )?;
-        assert!(tx.verify()?);
+        ).await?;
+        assert!(tx.verify().await?);
         let tx2 = fetcher.fetch(
             "5418099cc755cb9dd3ebc6cf1a7888ad53a1a3beb5a025bce89eb1bf7f1650a2",
             true,
             true,
-        )?;
-        assert!(tx2.verify()?);
+        ).await?;
+        assert!(tx2.verify().await?);
         Ok(())
     }
 
-    #[test]
-    fn test_is_coinbase() -> Result<()> {
+    #[tokio::test]
+    async fn test_is_coinbase() -> Result<()> {
         let raw_tx = hex::decode("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff5e03d71b07254d696e656420627920416e74506f6f6c20626a31312f4542312f4144362f43205914293101fabe6d6d678e2c8c34afc36896e7d9402824ed38e856676ee94bfdb0c6c4bcd8b2e5666a0400000000000000c7270000a5e00e00ffffffff01faf20b58000000001976a914338c84849423992471bffb1a54a8d9b1d69dc28a88ac00000000")?;
         let mut stream = Cursor::new(raw_tx);
-        let tx = Tx::parse(&mut stream, false)?;
+        let tx = Tx::parse(&mut stream, false).await?;
         assert!(tx.is_coinbase());
         Ok(())
     }
 
-    #[test]
-    fn test_coinbase_height() -> Result<()> {
+    #[tokio::test]
+    async fn test_coinbase_height() -> Result<()> {
         let raw_tx = hex::decode("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff5e03d71b07254d696e656420627920416e74506f6f6c20626a31312f4542312f4144362f43205914293101fabe6d6d678e2c8c34afc36896e7d9402824ed38e856676ee94bfdb0c6c4bcd8b2e5666a0400000000000000c7270000a5e00e00ffffffff01faf20b58000000001976a914338c84849423992471bffb1a54a8d9b1d69dc28a88ac00000000")?;
         let mut stream = Cursor::new(raw_tx);
-        let tx = Tx::parse(&mut stream, false)?;
+        let tx = Tx::parse(&mut stream, false).await?;
         assert_eq!(tx.coinbase_height(), Some(BigInt::from(465879)));
 
         let raw_tx = hex::decode("0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600")?;
         let mut stream = Cursor::new(raw_tx);
-        let tx = Tx::parse(&mut stream, false)?;
+        let tx = Tx::parse(&mut stream, false).await?;
         assert_eq!(tx.coinbase_height(), None);
         Ok(())
     }

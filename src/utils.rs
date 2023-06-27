@@ -400,7 +400,7 @@ pub fn bit_field_to_bytes(some_bytes: Vec<u8>) -> Result<Vec<u8>> {
 
 // based on https://github.com/jonalmeida/bloom-filter/blob/master/src/murmur3.rs
 // although bip37 is already dead: https://bitcoin.stackexchange.com/questions/109795/size-of-seed-used-in-murmur3-hash-bip0037
-pub fn murmur3_64_seeded(key: &str, seed: u64) -> u64 {
+pub fn murmur3_64_seeded(key_bytes: &[u8], seed: u64) -> u64 {
     let c1 = 0xcc9e2d51;
     let c2 = 0x1b873593;
     let r1: u32 = 15;
@@ -409,7 +409,6 @@ pub fn murmur3_64_seeded(key: &str, seed: u64) -> u64 {
     let n = 0xe6546b64;
 
     let mut hash = seed;
-    let key_bytes: &[u8] = key.as_bytes();
     let len = key_bytes.len();
 
     for byte_index in (0..len).step_by(4) {

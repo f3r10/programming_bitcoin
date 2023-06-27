@@ -15,6 +15,9 @@ pub enum Messages {
     VerAckMessage(VerAckMessage),
     VersionMessage(VersionMessage),
     GetHeadersMessage(GetHeadersMessage),
+    GenericMessage(GenericMessage),
+    GetDataMessage(GetDataMessage),
+    PongMessage(PongMessage)
 }
 
 pub struct HeadersMessage {
@@ -58,6 +61,22 @@ pub struct VersionMessage {
     pub relay: bool,
 }
 
+pub struct GenericMessage {
+    pub command: Vec<u8>,
+    pub payload: Vec<u8>,
+}
+
+pub struct GetDataMessage {
+    pub command: Vec<u8>,
+    pub data: Vec<(u8, Vec<u8>)>, // pub data_type: u8,
+                                  // pub identifier: Vec<u8>
+}
+
+pub struct PongMessage {
+    command: Vec<u8>,
+    pub nonce: Vec<u8>,
+}
+
 pub struct SimpleNode {
     pub testnet: bool,
     pub logging: bool,
@@ -67,6 +86,7 @@ pub struct SimpleNode {
 
 pub static NETWORK_MAGIC: [u8; 4] = *b"\xf9\xbe\xb4\xd9";
 pub static TESNET_NETWORK_MAGIC: [u8; 4] = *b"\x0b\x11\x09\x07";
+pub static FILTERED_BLOCK_DATA_TYPE: u8 = 3;
 
 impl NetworkEnvelope {
     pub fn new(command: Vec<u8>, payload: Vec<u8>, testnet: bool) -> Self {
@@ -355,7 +375,6 @@ impl SimpleNode {
                     message.serialize()?,
                     self.testnet,
                 );
-                println!("serialized: {}", hex::encode(envelope.serialize()?));
 
                 self.writer.write_all(&envelope.serialize()?).await?;
                 self.writer.flush().await?;
@@ -365,6 +384,39 @@ impl SimpleNode {
                 let envelope = NetworkEnvelope::new(
                     message.command.to_vec(),
                     message.serialize()?,
+                    self.testnet,
+                );
+
+                self.writer.write_all(&envelope.serialize()?).await?;
+                self.writer.flush().await?;
+                Ok(())
+            }
+            Messages::GenericMessage(message) => {
+                let envelope = NetworkEnvelope::new(
+                    message.command.to_vec(),
+                    message.serialize(),
+                    self.testnet,
+                );
+
+                self.writer.write_all(&envelope.serialize()?).await?;
+                self.writer.flush().await?;
+                Ok(())
+            }
+            Messages::GetDataMessage(message) => {
+                let envelope = NetworkEnvelope::new(
+                    message.command.to_vec(),
+                    message.serialize()?,
+                    self.testnet,
+                );
+
+                self.writer.write_all(&envelope.serialize()?).await?;
+                self.writer.flush().await?;
+                Ok(())
+            }
+            Messages::PongMessage(message) => {
+                let envelope = NetworkEnvelope::new(
+                    message.command.to_vec(),
+                    message.serialize(),
                     self.testnet,
                 );
 
@@ -449,20 +501,67 @@ impl HeadersMessage {
     }
 }
 
+impl GenericMessage {
+    pub fn new(command: Vec<u8>, payload: Vec<u8>) -> Self {
+        GenericMessage { command, payload }
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        self.payload.to_vec()
+    }
+}
+
+impl GetDataMessage {
+    pub fn new() -> Self {
+        GetDataMessage {
+            command: b"getdata".to_vec(),
+            data: Vec::new(),
+        }
+    }
+
+    pub fn add_data(&mut self, data_type: u8, identifier: Vec<u8>) -> () {
+        self.data.push((data_type, identifier));
+    }
+
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        let mut result: Vec<Vec<u8>> = Vec::new();
+        result.push(utils::encode_varint(self.data.len())?);
+        for (data_type, identifier) in &self.data {
+            result.push([data_type.to_le_bytes().to_vec(), vec![0; 3]].concat());
+            let mut identifier = identifier.clone();
+            identifier.reverse();
+            result.push(identifier);
+        }
+        Ok(result.concat())
+    }
+}
+
+impl PongMessage {
+    pub fn new(nonce: Vec<u8>) -> Self {
+        Self { command: b"pong".to_vec(), nonce}
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        self.nonce.to_vec()
+    }
+}
+
 #[cfg(test)]
 mod network_tests {
     use std::io::Cursor;
 
     use crate::{
         block::Block,
-        network::{HeadersMessage, NetworkEnvelope},
-        utils::calculate_new_bits_2,
+        bloomfilter::BloomFilter,
+        merkle_tree::MerkleBlock,
+        network::{GetDataMessage, HeadersMessage, NetworkEnvelope, PongMessage},
+        utils::{self, calculate_new_bits_2}, tx::Tx,
     };
     use anyhow::{bail, Result};
     use num_integer::Integer;
     use tokio::io::BufReader;
 
-    use super::{GetHeadersMessage, SimpleNode, VersionMessage};
+    use super::{GetHeadersMessage, SimpleNode, VersionMessage, FILTERED_BLOCK_DATA_TYPE};
 
     #[tokio::test]
     async fn test_network_parse() -> Result<()> {
@@ -582,6 +681,90 @@ mod network_tests {
                 assert!(false)
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_data_message_serialize() -> Result<()> {
+        let hex_msg =
+            "020300000030eb2540c41025690160a1014c577061596e32e426b712c7ca00000000000000030000001049847939585b0652fba793661c361223446b6fc41089b8be00000000000000";
+        let mut get_data = GetDataMessage::new();
+        let block1 =
+            hex::decode("00000000000000cac712b726e4326e596170574c01a16001692510c44025eb30")?;
+        get_data.add_data(FILTERED_BLOCK_DATA_TYPE, block1);
+        let block2 =
+            hex::decode("00000000000000beb88910c46f6b442312361c6693a7fb52065b583979844910")?;
+        get_data.add_data(FILTERED_BLOCK_DATA_TYPE, block2);
+        assert_eq!(hex::encode(get_data.serialize()?), hex_msg);
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "it is necessary to execute a full bitcoin node"]
+    async fn test_get_tx_interest() -> Result<()> {
+        let testnet = false;
+        let last_block_hex = "00000000000538d5c2246336644f9a4956551afb44ba47278759ec55ea912e19";
+        let address = "mwJn1YPMq7y5F8J3LkC5Hxg9PHyZ5K4cFv";
+        let h160 = utils::decode_base58(address)?;
+        let mut node = SimpleNode::new_and_send("127.0.0.1", 8333, testnet, true).await?;
+        let mut bf = BloomFilter::new(30, 5, 90210);
+        bf.add(&h160);
+        let ans = node.handshake().await;
+        assert!(ans.is_ok());
+        node.send(crate::network::Messages::GenericMessage(
+            bf.filterload(None)?,
+        ))
+        .await?;
+        let start_block = hex::decode(last_block_hex)?;
+        let getheaders = GetHeadersMessage::new(start_block);
+        node.send(crate::network::Messages::GetHeadersMessage(getheaders))
+            .await?;
+        let mut r = node.read().await?;
+        while r.command != b"headers" {
+            r = node.read().await?;
+        }
+        if r.command == b"headers" {
+            let mut getdata = GetDataMessage::new();
+            let cursor = Cursor::new(&r.payload);
+            let mut stream = BufReader::new(cursor);
+            let headers = HeadersMessage::parse(&mut stream).await?;
+            for header in headers.blocks {
+                if !header.check_pow()? {
+                    bail!("proof of work is invalid")
+                }
+                getdata.add_data(FILTERED_BLOCK_DATA_TYPE, header.hash()?)
+            }
+            node.send(crate::network::Messages::GetDataMessage(getdata))
+                .await?;
+        }
+        let mut found = false;
+        while !found {
+            let mut r = node.read().await?;
+            if r.command == b"merkleblock" {
+                r = node.read().await?;
+                let cursor = Cursor::new(&r.payload);
+                let mut stream = BufReader::new(cursor);
+                let message = MerkleBlock::parse(&mut stream).await?;
+                if !message.is_valid()? {
+                    bail!("invalid merkle proof")
+                }
+            } 
+            if r.command == b"tx" {
+                r = node.read().await?;
+                let cursor = Cursor::new(&r.payload);
+                let mut stream = BufReader::new(cursor);
+                let message = Tx::parse(&mut stream, testnet).await?;
+                for (i, tx_out) in message.tx_outs.iter().enumerate() {
+                    if tx_out.script_pubkey.address(testnet)? == address {
+                        println!("found: {}:{}", message.id()?, i);
+                        assert_eq!(message.id()?, "e3930e1e566ca9b75d53b0eb9acb7607f547e1182d1d22bd4b661cfe18dcddf1");
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }

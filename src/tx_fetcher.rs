@@ -3,7 +3,7 @@ use std::{collections::HashMap, io::Cursor};
 use serde::Deserialize;
 
 use crate::tx::Tx;
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 pub struct TxFetcher {
     cache: HashMap<String, Tx>,
@@ -30,20 +30,20 @@ impl TxFetcher {
         }
     }
 
-    pub fn fetch(&mut self, tx_id: &str, testnet: bool, fresh: bool) -> Result<Tx> {
+    pub async fn fetch(&mut self, tx_id: &str, testnet: bool, fresh: bool) -> Result<Tx> {
         if fresh || !self.cache.contains_key(tx_id) {
             let url = format!(
                 "{}/txs/{}?includeHex=true",
                 TxFetcher::get_url(testnet),
                 tx_id
             );
-            let res = reqwest::blocking::get(url)?;
-            let tx_remote: TxRemote = res.json()?;
+            let res = reqwest::get(url).await?; //blocking::get(url)?;
+            let tx_remote: TxRemote = res.json().await?;
             let hex_decode = hex::decode(tx_remote.hex)?;
             let mut reader = Cursor::new(hex_decode);
-            let tx = Tx::parse(&mut reader, testnet)?;
+            let tx = Tx::parse(&mut reader, testnet).await?;
             if tx_remote.hash != tx_id {
-                panic!("not the same id")
+                bail!("not the same id")
             }
             self.cache.insert(tx_id.to_string(), tx);
         }

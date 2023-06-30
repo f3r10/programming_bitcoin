@@ -42,13 +42,13 @@ impl Script {
             stream.read_exact(&mut current_buf).await?;
             count += 1;
             let current_byte = current_buf[0] as u32;
-            if current_byte >= 1 && current_byte <= 75 {
+            if current_byte >= 1 && current_byte <= 0x4b {
                 let mut temp = vec![0; current_byte.try_into()?];
                 stream.read_exact(&mut temp).await?;
                 let elem = Command::Element(temp);
                 cmds.push(elem);
                 count += u8::from_le_bytes(current_buf.try_into().unwrap()) as u64;
-            } else if current_byte == 76 {
+            } else if current_byte == 0x4c {
                 let mut temp = vec![0; 1];
                 stream.read_exact(&mut temp).await?;
                 let data_length = u8::from_le_bytes(temp.try_into().unwrap()) as u64;
@@ -57,7 +57,7 @@ impl Script {
                 let elem = Command::Element(temp);
                 cmds.push(elem);
                 count += data_length + 1;
-            } else if current_byte == 77 {
+            } else if current_byte == 0x4d {
                 let mut temp = vec![0; 2];
                 stream.read_exact(&mut temp).await?;
                 let data_length = u16::from_le_bytes(temp.try_into().unwrap()) as u64;

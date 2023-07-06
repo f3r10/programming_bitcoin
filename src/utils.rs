@@ -57,8 +57,27 @@ pub fn p2pkh_script(h160: Vec<u8>) -> Script {
     ]))
 }
 
+pub fn p2sh_script(h160: Vec<u8>) -> Script {
+    Script::new(Some(vec![
+        Command::Operation(op::parse_raw_op_codes(0xa9)),
+        Command::Element(h160),
+        Command::Operation(op::parse_raw_op_codes(0x87)),
+    ]))
+}
+
+pub fn p2wsh_script(h256: Vec<u8>) -> Script {
+    Script::new(Some(vec![
+        Command::Operation(op::parse_raw_op_codes(0x00)),
+        Command::Element(h256),
+    ]))
+}
+
 pub fn hash256(b: &[u8]) -> Vec<u8> {
     Sha256::digest(Sha256::digest(b)).to_vec()
+}
+
+pub fn sha256(b: &[u8]) -> Vec<u8> {
+    Sha256::digest(b).to_vec()
 }
 
 pub fn encode_base58_checksum(b: &[u8]) -> Result<String> {
@@ -77,8 +96,14 @@ pub fn decode_base58(s: &str) -> Result<Vec<u8>> {
             .context("unable to get position from filter")?;
         num += el
     }
-    let combined = num.to_bytes_be();
+    let mut combined = num.to_bytes_be();
+    if combined.len() < 25 {
+       combined = [vec![0; 25 - combined.len()], combined.clone()].concat();
+
+    }
     let checksum: Vec<u8> = combined.clone().into_iter().rev().take(4).collect();
+    let mut checksum = checksum.clone();
+    checksum.reverse();
     let head: Vec<u8> = combined
         .clone()
         .into_iter()
@@ -88,7 +113,6 @@ pub fn decode_base58(s: &str) -> Result<Vec<u8>> {
     let hash256: Vec<u8> = utils::hash256(head.as_slice())
         .into_iter()
         .take(4)
-        .rev()
         .collect();
     if hash256 != checksum {
         panic!(

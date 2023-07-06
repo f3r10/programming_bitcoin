@@ -1,14 +1,10 @@
 use core::panic;
-use std::{
-    fmt::Display,
-    io::Cursor,
-    ops::Add,
-    vec,
-};
+use std::{fmt::Display, io::Cursor, ops::Add, vec};
 
 use crate::{
     op::{self, OpCodeFunctions},
     signature::SignatureHash,
+    tx::TxInWitness,
     utils::{self, encode_varint},
 };
 use anyhow::{bail, Context, Result};
@@ -23,6 +19,27 @@ pub enum Command {
 #[derive(Debug, Clone)]
 pub struct Script {
     pub cmds: Vec<Command>,
+}
+
+pub fn check_for_p2sh_rule(cmds_copy: &Vec<Command>) -> bool {
+        let pattern1 = cmds_copy.len() == 3;
+        if pattern1 {
+            let pattern2 = match &cmds_copy[0] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
+            };
+            let pattern3_4 = match &cmds_copy[1] {
+                Command::Element(bytes) => bytes.len() == 20,
+                Command::Operation(_) => false,
+            };
+            let pattern5 = match &cmds_copy[2] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
+            };
+            pattern2 && pattern3_4 & pattern5
+        } else {
+            false
+        }
 }
 
 impl Script {
@@ -82,52 +99,102 @@ impl Script {
     pub fn is_p2sh_script_pubkey(&self) -> bool {
         let cmds_copy = self.cmds.clone();
         let pattern1 = cmds_copy.len() == 3;
-        let pattern2 = match &cmds_copy[0] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
-        };
-        let pattern3_4 = match &cmds_copy[1] {
-            Command::Element(bytes) => bytes.len() == 20,
-            Command::Operation(_) => false,
-        };
-        let pattern5 = match &cmds_copy[2] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
-        };
-
-        pattern1 && pattern2 && pattern3_4 & pattern5
+        if pattern1 {
+            let pattern2 = match &cmds_copy[0] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
+            };
+            let pattern3_4 = match &cmds_copy[1] {
+                Command::Element(bytes) => bytes.len() == 20,
+                Command::Operation(_) => false,
+            };
+            let pattern5 = match &cmds_copy[2] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
+            };
+            pattern1 && pattern2 && pattern3_4 & pattern5
+        } else {
+            false
+        }
     }
 
     pub fn is_p2pkh_script_pubkey(&self) -> bool {
         let cmds_copy = self.cmds.clone();
         let pattern1 = cmds_copy.len() == 5;
-        let pattern2 = match &cmds_copy[0] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_dup().as_ref(),
-        };
-        let pattern3 = match &cmds_copy[1] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref() ,
-        };
-        let pattern4_5 = match &cmds_copy[2] {
-            Command::Element(bytes) => bytes.len() == 20,
-            Command::Operation(_) => false,
-        };
+        if pattern1 {
+            let pattern2 = match &cmds_copy[0] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_dup().as_ref(),
+            };
+            let pattern3 = match &cmds_copy[1] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
+            };
+            let pattern4_5 = match &cmds_copy[2] {
+                Command::Element(bytes) => bytes.len() == 20,
+                Command::Operation(_) => false,
+            };
 
-        let pattern6 = match &cmds_copy[3] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equalverify().as_ref(),
-        };
+            let pattern6 = match &cmds_copy[3] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => {
+                    cmd.as_ref() == OpCodeFunctions::op_equalverify().as_ref()
+                }
+            };
 
-        let pattern7 = match &cmds_copy[4] {
-            Command::Element(_) => false,
-            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_checksig().as_ref(),
-        };
-
-        pattern1 && pattern2 && pattern3 && pattern4_5 && pattern6 && pattern7
+            let pattern7 = match &cmds_copy[4] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_checksig().as_ref(),
+            };
+            pattern1 && pattern2 && pattern3 && pattern4_5 && pattern6 && pattern7
+        } else {
+            false
+        }
     }
 
-    pub async fn evaluate(self, z: SignatureHash) -> Result<bool> {
+    pub fn is_p2wpkh_script_pubkey(&self) -> bool {
+        let cmds_copy = self.cmds.clone();
+        let pattern1 = cmds_copy.len() == 2;
+        if pattern1 {
+            let pattern2 = match &cmds_copy[0] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op0().as_ref(),
+            };
+            let pattern3_4 = match &cmds_copy[1] {
+                Command::Element(bytes) => bytes.len() == 20,
+                Command::Operation(_) => false,
+            };
+
+            pattern1 && pattern2 && pattern3_4
+        } else {
+            false
+        }
+    }
+
+    pub fn is_p2wsh_script_pubkey(&self) -> bool {
+        let cmds_copy = self.cmds.clone();
+        let pattern1 = cmds_copy.len() == 2;
+        if pattern1 {
+            let pattern2 = match &cmds_copy[0] {
+                Command::Element(_) => false,
+                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op0().as_ref(),
+            };
+            let pattern3_4 = match &cmds_copy[1] {
+                Command::Element(bytes) => bytes.len() == 32,
+                Command::Operation(_) => false,
+            };
+
+            pattern1 && pattern2 && pattern3_4
+        } else {
+            false
+        }
+    }
+
+    pub async fn evaluate(
+        self,
+        z: SignatureHash,
+        witness: Option<Vec<TxInWitness>>,
+    ) -> Result<bool> {
         let mut cmds_copy = self.cmds.clone();
         let mut stack: Vec<Vec<u8>> = Vec::new();
         let mut altstack: Vec<Vec<u8>> = Vec::new();
@@ -136,7 +203,7 @@ impl Script {
             match cmd {
                 Command::Element(elem) => {
                     stack.push(elem.to_vec());
-                    if self.is_p2sh_script_pubkey() {
+                    if check_for_p2sh_rule(&cmds_copy)  {
                         cmds_copy.pop().context("unable to pop cmd")?; //this is op_hash160
                         let h160 = match cmds_copy.pop().context("unable to pop cmd")? {
                             Command::Element(elem) => elem,
@@ -160,6 +227,69 @@ impl Script {
                         let mut stream = Cursor::new(redeem_script);
                         let mut checkmultisigcmds = Script::parse(&mut stream).await?.cmds;
                         cmds_copy.append(&mut checkmultisigcmds)
+                    }
+                    // this is p2wpkh
+                    if stack.len() == 2 && stack[0] == b"" && stack[1].len() == 20 {
+                        let h160 = match stack.pop() {
+                            Some(value) => value,
+                            None => bail!("stack should have an h160 value"),
+                        };
+                        stack.pop().context("unable to pop cmd")?; //this is op_equal
+                        match &witness {
+                            Some(witness_elems) => {
+                                for elem in witness_elems {
+                                    match elem {
+                                        TxInWitness::SimpleNumber(elm) => cmds_copy.append(
+                                            &mut vec![Command::Element(elm.to_be_bytes().to_vec())],
+                                        ),
+                                        TxInWitness::ComplexElem(elm) => cmds_copy
+                                            .append(&mut vec![Command::Element(elm.to_vec())]),
+                                    }
+                                }
+                            }
+                            None => bail!("p2wpkh needs a witness as argument to evaluate"),
+                        }
+                        cmds_copy.append(&mut utils::p2pkh_script(h160).cmds.clone());
+                    }
+
+                    // this is p2wsh
+                    if stack.len() == 2 && stack[0] == b"" && stack[1].len() == 32 {
+                        let s256 = match stack.pop() {
+                            Some(value) => value,
+                            None => bail!("stack should have an s256 value"),
+                        };
+                        stack.pop().context("unable to pop cmd")?; //this is op_equal
+                        match &witness {
+                            Some(witness_elems) => {
+                                let mut witness_elems_but_last = witness_elems.clone();
+                                witness_elems_but_last.pop().context("unable to remove")?;
+                                for elem in witness_elems_but_last {
+                                    match elem {
+                                        TxInWitness::SimpleNumber(elm) => cmds_copy.append(
+                                            &mut vec![Command::Element(elm.to_be_bytes().to_vec())],
+                                        ),
+                                        TxInWitness::ComplexElem(elm) => cmds_copy
+                                            .append(&mut vec![Command::Element(elm.to_vec())]),
+                                    }
+                                }
+                            }
+                            None => bail!("p2wsh needs a witness as argument to evaluate"),
+                        };
+                        let witness_script = match witness.as_ref().and_then(|w| w.last()) {
+                            Some(witness_script) => match witness_script {
+                                TxInWitness::SimpleNumber(elm) => elm.to_be_bytes().to_vec(),
+                                TxInWitness::ComplexElem(elm) => elm.to_vec(),
+                            },
+                            None => bail!("invalid witness script for p2wsh"),
+                        };
+                        if s256 != utils::sha256(&witness_script) {
+                            return Ok(false);
+                        }
+                        let mut stream = Cursor::new(
+                            [utils::encode_varint(witness_script.len())?, witness_script].concat(),
+                        );
+                        let mut witness_script_cmds = Script::parse(&mut stream).await?.cmds;
+                        cmds_copy.append(&mut witness_script_cmds);
                     }
                 }
                 Command::Operation(op_code) => {
@@ -226,16 +356,12 @@ impl Script {
     pub fn address(&self, testnet: bool) -> Result<String> {
         if self.is_p2pkh_script_pubkey() {
             match &self.cmds[2] {
-                Command::Element(h160) => {
-                    return utils::h160_to_p2pkh_address(&h160, testnet)
-                },
+                Command::Element(h160) => return utils::h160_to_p2pkh_address(&h160, testnet),
                 Command::Operation(_) => bail!("invalid cmd"),
             }
         } else if self.is_p2sh_script_pubkey() {
             match &self.cmds[1] {
-                Command::Element(h160) => {
-                    return utils::h160_to_p2psh_address(&h160, testnet)
-                },
+                Command::Element(h160) => return utils::h160_to_p2psh_address(&h160, testnet),
                 Command::Operation(_) => bail!("invalid cmd"),
             }
         } else {
@@ -303,6 +429,15 @@ mod script_tests {
         };
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_script_serialize() {
+        let s = hex::decode("6a47304402207899531a52d59a6de200179928ca900254a36b8dff8bb75f5f5d71b1cdc26125022008b422690b8461cb52c3cc30330b23d574351872b7c361e9aae3649071c1a7160121035d5c93d9ac96881f19ba1f686f15f009ded7c62efe85a872e6a19b43c15a2937").unwrap();
+        let mut cursor = Cursor::new(s.clone());
+        let script = Script::parse(&mut cursor).await.unwrap();
+        assert_eq!(script.serialize().unwrap(), s);
+    }
+
     #[tokio::test]
     async fn test_evaluate_script() -> Result<()> {
         let z = Signature::signature_hash_from_hex(
@@ -319,7 +454,7 @@ mod script_tests {
         let script_pubkey = Script::new(Some(cmd));
         let script_sig = Script::new(Some(vec![Command::Element(sig_encode)]));
         let combined_script = script_sig + script_pubkey;
-        assert!(combined_script.evaluate(z).await?);
+        assert!(combined_script.evaluate(z, None).await?);
         Ok(())
     }
 
@@ -349,5 +484,23 @@ mod script_tests {
             Command::Operation(_) => assert!(false),
         };
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_address_script() {
+        let testnet = false;
+        let address_1 = "1BenRpVUFK65JFWcQSuHnJKzc4M8ZP8Eqa";
+        let h160 = utils::decode_base58(address_1).unwrap();
+        let p2pkh_script_pubkey = utils::p2pkh_script(h160);
+        assert_eq!(p2pkh_script_pubkey.address(testnet).unwrap(), address_1);
+        let address_2 = "mrAjisaT4LXL5MzE81sfcDYKU3wqWSvf9q";
+        assert_eq!(p2pkh_script_pubkey.address(true).unwrap(), address_2);
+
+        let address_3 = "3CLoMMyuoDQTPRD3XYZtCvgvkadrAdvdXh";
+        let h160 = utils::decode_base58(address_3).unwrap();
+        let p2sh_script_pubkey = utils::p2sh_script(h160);
+        assert_eq!(p2sh_script_pubkey.address(testnet).unwrap(), address_3);
+        let address_4 = "2N3u1R6uwQfuobCqbCgBkpsgBxvr1tZpe7B";
+        assert_eq!(p2sh_script_pubkey.address(true).unwrap(), address_4);
     }
 }

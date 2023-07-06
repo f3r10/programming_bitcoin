@@ -1,9 +1,6 @@
-use std::{
-    fmt::Display,
-    io::Cursor,
-};
+use std::{fmt::Display, io::Cursor};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use byteorder::{ByteOrder, LittleEndian};
 use num_bigint::BigInt;
 use tokio::io::{AsyncReadExt, AsyncSeek, AsyncSeekExt};
@@ -24,11 +21,18 @@ pub struct TxOut {
 }
 
 #[derive(Debug, Clone)]
+pub enum TxInWitness {
+    SimpleNumber(u32),
+    ComplexElem(Vec<u8>),
+}
+
+#[derive(Debug, Clone)]
 pub struct TxIn {
     pub prev_tx: Vec<u8>,
     pub prev_index: u32,
     pub script_sig: Option<Script>,
     pub sequence: Option<u32>,
+    pub witness: Option<Vec<TxInWitness>>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +42,10 @@ pub struct Tx {
     pub tx_outs: Vec<TxOut>,
     pub locktime: u32,
     pub testnet: bool,
+    pub segwit: bool,
+    pub _hash_prevouts: Vec<u8>,
+    pub _hash_sequence: Vec<u8>,
+    pub _hash_outputs: Vec<u8>,
 }
 
 impl Tx {
@@ -47,6 +55,7 @@ impl Tx {
         tx_outs: Vec<TxOut>,
         locktime: u32,
         testnet: bool,
+        segwit: bool,
     ) -> Self {
         Tx {
             version,
@@ -54,10 +63,17 @@ impl Tx {
             tx_outs,
             locktime,
             testnet,
+            segwit,
+            _hash_prevouts: Vec::new(),
+            _hash_sequence: Vec::new(),
+            _hash_outputs: Vec::new(),
         }
     }
 
-    pub async fn parse<R: tokio::io::AsyncBufRead + Unpin + AsyncSeek>(stream: &mut R, testnet: bool) -> Result<Self> {
+    pub async fn parse<R: tokio::io::AsyncBufRead + Unpin + AsyncSeek>(
+        stream: &mut R,
+        testnet: bool,
+    ) -> Result<Self> {
         let mut buffer = [0; 4];
 
         let mut handle = stream.take(4);
@@ -67,11 +83,12 @@ impl Tx {
 
         // The next two bytes represents if the TX is segwit
         // Not all TX's have this mark so if not, it is necessary to restart the position.
-        // TODO handle segwit correctly
-        let mut buffer = [0; 2];
+        let mut segwit = false;
+        let mut marker = [0; 2];
         let mut handle = stream.take(2);
-        handle.read_exact(&mut buffer).await?;
-        if buffer == [0_u8, 1_u8] {
+        handle.read_exact(&mut marker).await?;
+        if marker == [0_u8, 1_u8] {
+            segwit = true
         } else {
             stream.seek(std::io::SeekFrom::Start(pos)).await?;
         }
@@ -85,6 +102,24 @@ impl Tx {
         for _ in 0..num_outputs {
             outputs.push(TxOut::parse(stream).await?)
         }
+        if segwit {
+            for mut tx_in in inputs.iter_mut() {
+                let num_items = utils::read_varint_async(stream).await?;
+                let mut items = Vec::new();
+                for _ in 0..num_items {
+                    let item_len = utils::read_varint_async(stream).await?;
+                    if item_len == 0 {
+                        items.push(TxInWitness::SimpleNumber(0))
+                    } else {
+                        let mut buffer = vec![0; item_len as usize];
+                        let mut handle = stream.take(item_len);
+                        handle.read_exact(&mut buffer).await?;
+                        items.push(TxInWitness::ComplexElem(buffer))
+                    }
+                    tx_in.witness = Some(items.clone());
+                }
+            }
+        }
         let mut locktime_buffer = [0; 4];
         stream.read_exact(&mut locktime_buffer).await?;
         let locktime = LittleEndian::read_u32(&locktime_buffer);
@@ -94,12 +129,19 @@ impl Tx {
             tx_outs: outputs,
             locktime,
             testnet,
+            segwit,
+            _hash_prevouts: Vec::new(),
+            _hash_sequence: Vec::new(),
+            _hash_outputs: Vec::new(),
         })
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut result: Vec<Vec<u8>> = Vec::new();
         result.push(self.version.to_le_bytes().to_vec());
+        if self.segwit {
+            result.push([0_u8, 1_u8].to_vec())
+        }
         result.push(utils::encode_varint(self.tx_ins.len())?);
         for tx_in in &self.tx_ins {
             let intx = tx_in.serialize()?;
@@ -109,6 +151,26 @@ impl Tx {
         for tx_out in &self.tx_outs {
             let outx = tx_out.serialize()?;
             result.push(outx)
+        }
+        if self.segwit {
+            for tx_in in &self.tx_ins {
+                match &tx_in.witness {
+                    Some(witness) => {
+                        for elem_witness in witness {
+                            match elem_witness {
+                                TxInWitness::SimpleNumber(num) => {
+                                    result.push(utils::u32_to_little_endian(*num, 1)?)
+                                }
+                                TxInWitness::ComplexElem(elem) => {
+                                    result.push(utils::encode_varint(elem.len())?);
+                                    result.push(elem.to_vec());
+                                }
+                            }
+                        }
+                    }
+                    None => bail!("tx is marked as segwit but witness is not present"),
+                }
+            }
         }
         result.push(self.locktime.to_le_bytes().to_vec());
         Ok(result.concat())
@@ -127,7 +189,11 @@ impl Tx {
         Ok(tx_ins_total - tx_outs_total)
     }
 
-    pub async fn sig_hash(&self, input_index: usize, redeem_script: Option<Script>) -> Result<BigInt> {
+    pub async fn sig_hash(
+        &self,
+        input_index: usize,
+        redeem_script: Option<Script>,
+    ) -> Result<BigInt> {
         let mut s = self.version.to_le_bytes().to_vec();
         s.append(&mut utils::encode_varint(self.tx_ins.len())?);
         for (i, tx_in) in self.tx_ins.iter().enumerate() {
@@ -145,6 +211,7 @@ impl Tx {
                 tx_in.prev_index.clone(),
                 script_sig,
                 tx_in.sequence.clone(),
+                None,
             )
             .serialize()?;
             s.append(&mut tx);
@@ -163,10 +230,96 @@ impl Tx {
         return Ok(BigInt::from_bytes_be(num_bigint::Sign::Plus, &hash));
     }
 
-    pub async fn verify_input(&self, input_index: usize) -> Result<bool> {
-        let tx_in = &self.tx_ins[input_index];
+    pub fn hash_prevouts(&mut self) -> Result<Vec<u8>> {
+        if self._hash_prevouts.is_empty() {
+            let mut all_prevouts: Vec<Vec<u8>> = Vec::new();
+            let mut all_sequence: Vec<Vec<u8>> = Vec::new();
+            for tx_in in &self.tx_ins {
+                let mut prev_tx = tx_in.prev_tx.clone();
+                prev_tx.reverse();
+                all_prevouts.push(prev_tx);
+                all_prevouts.push(tx_in.prev_index.to_le_bytes().to_vec());
+                match tx_in.sequence.as_ref() {
+                    Some(s) => all_sequence.push(s.to_le_bytes().to_vec()),
+                    None => all_sequence.push(utils::u32_to_little_endian(0xffffffff, 4)?),
+                }
+            }
+            self._hash_prevouts = utils::hash256(&all_prevouts.concat());
+            self._hash_sequence = utils::hash256(&all_sequence.concat());
+        }
+        Ok(self._hash_prevouts.to_vec())
+    }
+
+    pub fn hash_sequence(&mut self) -> Result<Vec<u8>> {
+        if self._hash_sequence.is_empty() {
+            self.hash_prevouts()?;
+        }
+        Ok(self._hash_sequence.to_vec())
+    }
+
+    pub fn hash_ouputs(&mut self) -> Result<Vec<u8>> {
+        if self._hash_outputs.is_empty() {
+            let mut all_outputs: Vec<Vec<u8>> = Vec::new();
+            for tx_out in &self.tx_outs {
+                all_outputs.push(tx_out.serialize()?);
+            }
+            self._hash_outputs = utils::hash256(&all_outputs.concat());
+        }
+
+        Ok(self._hash_outputs.to_vec())
+    }
+
+    pub async fn sig_hash_bip143(
+        &mut self,
+        input_index: usize,
+        redeem_script: Option<Script>,
+        witness_script: Option<Script>,
+    ) -> Result<BigInt> {
+        let tx_in = self.tx_ins[input_index].clone();
+        let mut result: Vec<Vec<u8>> = Vec::new();
+        result.push(self.version.to_le_bytes().to_vec());
+        result.push(self.hash_prevouts()?);
+        result.push(self.hash_sequence()?);
+        let mut prev_tx = tx_in.prev_tx.clone();
+        prev_tx.reverse();
+        result.push(prev_tx);
+        result.push(tx_in.prev_index.to_le_bytes().to_vec());
+        let script_code: Vec<u8>;
+        if let Some(witness) = witness_script {
+            script_code = witness.serialize()?;
+        } else if let Some(redeem) = redeem_script {
+            match &redeem.cmds[1] {
+                Command::Element(elm) => {
+                    script_code = utils::p2pkh_script(elm.clone()).serialize()?;
+                }
+                Command::Operation(_) => bail!("redeem script should be an command element"),
+            }
+        } else {
+            match &tx_in.script_pubkey(self.testnet).await?.cmds[1] {
+                Command::Element(elm) => {
+                    script_code = utils::p2pkh_script(elm.clone()).serialize()?;
+                }
+                Command::Operation(_) => bail!("default case should be an command element"),
+            }
+        }
+        result.push(script_code);
+        result.push(tx_in.value(self.testnet).await?.to_le_bytes().to_vec());
+        match tx_in.sequence.as_ref() {
+            Some(s) => result.push(s.to_le_bytes().to_vec()),
+            None => result.push(utils::u32_to_little_endian(0xffffffff, 4)?),
+        }
+        result.push(self.hash_ouputs()?);
+        result.push(self.locktime.to_le_bytes().to_vec());
+        result.push(1_u32.to_le_bytes().to_vec());
+        let hash = utils::hash256(&result.concat());
+        return Ok(BigInt::from_bytes_be(num_bigint::Sign::Plus, &hash));
+    }
+
+    pub async fn verify_input(&mut self, input_index: usize) -> Result<bool> {
+        let tx_in = self.tx_ins[input_index].clone();
         let script_pubkey = tx_in.script_pubkey(self.testnet).await?;
-        let redeem_script: Option<Script>;
+        let z: BigInt;
+        let witness: Option<Vec<TxInWitness>>;
         if script_pubkey.is_p2sh_script_pubkey() {
             // OP_0 , SIG1, SIG2, ..., RedeemScript
             let cmd = match tx_in
@@ -182,22 +335,73 @@ impl Tx {
             };
             let raw_redeem = [utils::encode_varint(cmd.len())?, cmd.to_vec()].concat();
             let mut raw_redeem_cursor = Cursor::new(raw_redeem);
-            redeem_script = Some(Script::parse(&mut raw_redeem_cursor).await?);
+            let _redeem_script = Script::parse(&mut raw_redeem_cursor).await?;
+            if _redeem_script.is_p2wpkh_script_pubkey() {
+                z = self
+                    .sig_hash_bip143(input_index, Some(_redeem_script), None)
+                    .await?;
+                witness = tx_in.witness.clone();
+            } else if _redeem_script.is_p2wsh_script_pubkey() {
+                let command = match &tx_in.witness {
+                    Some(witness) => match witness.last() {
+                        Some(last_witness_elm) => match last_witness_elm {
+                            TxInWitness::SimpleNumber(num) => utils::u32_to_little_endian(*num, 1)?,
+                            TxInWitness::ComplexElem(elm) => elm.to_vec(),
+                        },
+                        None => bail!("is_p2wsh_script_pubkey has an invalid witness"),
+                    },
+                    None => bail!("is_p2wsh_script_pubkey has an invalid witness"),
+                };
+                let raw_witness = [utils::encode_varint(command.len())?, command].concat();
+                let mut raw_witness_cursor = Cursor::new(raw_witness);
+                let witness_script = Script::parse(&mut raw_witness_cursor).await?;
+                z = self
+                    .sig_hash_bip143(input_index, None, Some(witness_script))
+                    .await?;
+                witness = tx_in.witness;
+            } else {
+                z = self.sig_hash(input_index, Some(_redeem_script)).await?;
+                witness = None;
+            }
         } else {
-            redeem_script = None
+            if script_pubkey.is_p2wpkh_script_pubkey() {
+                z = self.sig_hash_bip143(input_index, None, None).await?;
+                witness = tx_in.witness.clone();
+            } else if script_pubkey.is_p2wsh_script_pubkey() {
+                let command = match &tx_in.witness {
+                    Some(witness) => match witness.last() {
+                        Some(last_witness_elm) => match last_witness_elm {
+                            TxInWitness::SimpleNumber(num) => utils::u32_to_little_endian(*num, 1)?,
+                            TxInWitness::ComplexElem(elm) => elm.to_vec(),
+                        },
+                        None => bail!("is_p2wsh_script_pubkey has an invalid witness"),
+                    },
+                    None => bail!("is_p2wsh_script_pubkey has an invalid witness"),
+                };
+                let raw_witness = [utils::encode_varint(command.len())?, command].concat();
+                let mut raw_witness_cursor = Cursor::new(raw_witness);
+                let witness_script = Script::parse(&mut raw_witness_cursor).await?;
+                z = self
+                    .sig_hash_bip143(input_index, None, Some(witness_script))
+                    .await?;
+                witness = tx_in.witness;
+            } else {
+                z = self.sig_hash(input_index, None).await?;
+                witness = None;
+            }
         }
-        let sig_hash = self.sig_hash(input_index, redeem_script).await?;
-        let z = Signature::signature_hash_from_int(sig_hash);
+
+        let z = Signature::signature_hash_from_int(z);
         match tx_in.script_sig.clone() {
             Some(script_sig) => {
                 let combined = script_sig + script_pubkey;
-                combined.evaluate(z).await
+                combined.evaluate(z, witness).await
             }
             None => Ok(false),
         }
     }
 
-    pub async fn verify(&self) -> Result<bool> {
+    pub async fn verify(&mut self) -> Result<bool> {
         if self.fee(self.testnet).await? < BigInt::from(0) {
             return Ok(false);
         } else {
@@ -220,7 +424,11 @@ impl Tx {
         Ok(a)
     }
 
-    pub async fn sign_input(&mut self, input_index: usize, private_key: PrivateKey) -> Result<bool> {
+    pub async fn sign_input(
+        &mut self,
+        input_index: usize,
+        private_key: PrivateKey,
+    ) -> Result<bool> {
         let z = self.sig_hash(input_index, None).await?;
         let sign = private_key.sign(&Signature::signature_hash_from_int(z), None)?;
         let mut der_sighash = sign.der()?;
@@ -295,12 +503,14 @@ impl TxIn {
         prev_index: u32,
         script_sig: Option<Script>,
         sequence: Option<u32>,
+        witness: Option<Vec<TxInWitness>>,
     ) -> Self {
         TxIn {
             prev_tx,
             prev_index,
             script_sig,
             sequence,
+            witness,
         }
     }
 
@@ -320,6 +530,7 @@ impl TxIn {
             prev_index,
             script_sig: Some(script_sig),
             sequence: Some(sequence),
+            witness: None,
         })
     }
 
@@ -342,7 +553,9 @@ impl TxIn {
 
     pub async fn fetch_tx(&self, testnet: bool) -> Result<Tx> {
         let mut tx_fetcher = TxFetcher::new();
-        tx_fetcher.fetch(&hex::encode(self.prev_tx.clone()), testnet, false).await
+        tx_fetcher
+            .fetch(&hex::encode(self.prev_tx.clone()), testnet, false)
+            .await
     }
 
     pub async fn value(&self, testnet: bool) -> Result<u64> {
@@ -563,7 +776,7 @@ mod tx_tests {
         let tx = "0100000001813f79011acb80925dfe69b3def355fe914bd1d96a3f5f71bf8303c6a989c7d1000000006b483045022100ed81ff192e75a3fd2304004dcadb746fa5e24c5031ccfcf21320b0277457c98f02207a986d955c6e0cb35d446a89d3f56100f4d7f67801c31967743a9c8e10615bed01210349fc4e631e3624a545de3f89f5d8684c7b8138bd94bdd531d2e213bf016b278afeffffff02a135ef01000000001976a914bc3b654dca7e56b04dca18f2566cdaf02e8d9ada88ac99c39800000000001976a9141c4bc762dd5423e332166702cb75f40df79fea1288ac19430600";
         let tx_encode = hex::decode(tx)?;
         let mut cursor_tx = Cursor::new(tx_encode);
-        let tx = Tx::parse(&mut cursor_tx, false).await?;
+        let mut tx = Tx::parse(&mut cursor_tx, false).await?;
         assert!(tx.verify().await?);
         Ok(())
     }
@@ -621,14 +834,20 @@ mod tx_tests {
         let secret = "f3r10@programmingblockchain.com my secret";
         let priva = PrivateKey::new(&PrivateKey::generate_secret(secret))?;
         let mut tx_ins: Vec<TxIn> = Vec::new();
-        tx_ins.push(TxIn::new(prev_tx_faucet, prev_tx_faucet_index, None, None));
-        tx_ins.push(TxIn::new(prev_tx_ex4, prev_tx_ex4_index, None, None));
+        tx_ins.push(TxIn::new(
+            prev_tx_faucet,
+            prev_tx_faucet_index,
+            None,
+            None,
+            None,
+        ));
+        tx_ins.push(TxIn::new(prev_tx_ex4, prev_tx_ex4_index, None, None, None));
         let mut tx_outs: Vec<TxOut> = Vec::new();
         let h160 = utils::decode_base58(target_address)?;
         let script_pubkey = utils::p2pkh_script(h160);
         let target_satoshis = (target_amount * 100_000_000_f64) as u64;
         tx_outs.push(TxOut::new(target_satoshis, script_pubkey));
-        let mut tx_obj = Tx::new(1, tx_ins, tx_outs, 0, true);
+        let mut tx_obj = Tx::new(1, tx_ins, tx_outs, 0, true, false);
         // each may have different private keys to unlock the ScriptPubKey
         assert!(tx_obj.sign_input(0, priva.clone()).await?);
         assert!(tx_obj.sign_input(1, priva.clone()).await?);
@@ -639,11 +858,13 @@ mod tx_tests {
     #[tokio::test]
     async fn test_sig_hash() -> Result<()> {
         let mut fetcher = TxFetcher::new();
-        let tx = fetcher.fetch(
-            "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
-            false,
-            true,
-        ).await?;
+        let tx = fetcher
+            .fetch(
+                "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
+                false,
+                true,
+            )
+            .await?;
         let want = BigInt::parse_bytes(
             b"27e0c5994dec7824e56dec6b2fcb342eb7cdb0d0957c2fce9882f715e85d81a6",
             16,
@@ -654,13 +875,15 @@ mod tx_tests {
     }
 
     #[tokio::test]
-    async fn test_verify_p2sh() -> Result<()> {
+    async fn test_p2sh_verify() -> Result<()> {
         let mut fetcher = TxFetcher::new();
-        let tx = fetcher.fetch(
-            "46df1a9484d0a81d03ce0ee543ab6e1a23ed06175c104a178268fad381216c2b",
-            false,
-            true,
-        ).await?;
+        let mut tx = fetcher
+            .fetch(
+                "46df1a9484d0a81d03ce0ee543ab6e1a23ed06175c104a178268fad381216c2b",
+                false,
+                true,
+            )
+            .await?;
         assert!(tx.verify().await?);
         Ok(())
     }
@@ -668,19 +891,79 @@ mod tx_tests {
     #[tokio::test]
     async fn test_verify_p2pkh() -> Result<()> {
         let mut fetcher = TxFetcher::new();
-        let tx = fetcher.fetch(
-            "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
-            false,
-            true,
-        ).await?;
+        let mut tx = fetcher
+            .fetch(
+                "452c629d67e41baec3ac6f04fe744b4b9617f8f859c63b3002f8684e7a4fee03",
+                false,
+                true,
+            )
+            .await?;
         assert!(tx.verify().await?);
-        let tx2 = fetcher.fetch(
-            "5418099cc755cb9dd3ebc6cf1a7888ad53a1a3beb5a025bce89eb1bf7f1650a2",
-            true,
-            true,
-        ).await?;
+        let mut tx2 = fetcher
+            .fetch(
+                "5418099cc755cb9dd3ebc6cf1a7888ad53a1a3beb5a025bce89eb1bf7f1650a2",
+                true,
+                true,
+            )
+            .await?;
         assert!(tx2.verify().await?);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_verify_p2wpkh() {
+        let mut fetcher = TxFetcher::new();
+        let mut tx = fetcher
+            .fetch(
+                "d869f854e1f8788bcff294cc83b280942a8c728de71eb709a2c29d10bfe21b7c",
+                true,
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(tx.verify().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_verify_p2sh_p2wpkh() {
+        let mut fetcher = TxFetcher::new();
+        let mut tx = fetcher
+            .fetch(
+                "c586389e5e4b3acb9d6c8be1c19ae8ab2795397633176f5a6442a261bbdefc3a",
+                false,
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(tx.verify().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_verify_p2wsh() {
+        let mut fetcher = TxFetcher::new();
+        let mut tx = fetcher
+            .fetch(
+                "78457666f82c28aa37b74b506745a7c7684dc7842a52a457b09f09446721e11c",
+                true,
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(tx.verify().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_verify_p2sh_p2wsh() {
+        let mut fetcher = TxFetcher::new();
+        let mut tx = fetcher
+            .fetch(
+                "954f43dbb30ad8024981c07d1f5eb6c9fd461e2cf1760dd1283f052af746fc88",
+                true,
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(tx.verify().await.unwrap());
     }
 
     #[tokio::test]
@@ -704,5 +987,37 @@ mod tx_tests {
         let tx = Tx::parse(&mut stream, false).await?;
         assert_eq!(tx.coinbase_height(), None);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_input_value() {
+        let tx_hash =
+            hex::decode("d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81")
+                .unwrap();
+        let testnet = false;
+        let index = 0;
+        let want = 42505594;
+        let tx_in = TxIn::new(tx_hash, index, None, None, None);
+        assert_eq!(tx_in.value(testnet).await.unwrap(), want);
+    }
+
+    #[tokio::test]
+    async fn test_input_pubkey() {
+        let tx_hash =
+            hex::decode("d1c789a9c60383bf715f3f6ad9d14b91fe55f3deb369fe5d9280cb1a01793f81")
+                .unwrap();
+        let index = 0;
+        let testnet = false;
+        let tx_in = TxIn::new(tx_hash, index, None, None, None);
+        let want = hex::decode("1976a914a802fc56c704ce87c42d7c92eb75e7896bdc41ae88ac").unwrap();
+        assert_eq!(
+            tx_in
+                .script_pubkey(testnet)
+                .await
+                .unwrap()
+                .serialize()
+                .unwrap(),
+            want
+        )
     }
 }

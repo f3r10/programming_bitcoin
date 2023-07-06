@@ -17,7 +17,7 @@ pub enum Messages {
     GetHeadersMessage(GetHeadersMessage),
     GenericMessage(GenericMessage),
     GetDataMessage(GetDataMessage),
-    PongMessage(PongMessage)
+    PongMessage(PongMessage),
 }
 
 pub struct HeadersMessage {
@@ -538,7 +538,10 @@ impl GetDataMessage {
 
 impl PongMessage {
     pub fn new(nonce: Vec<u8>) -> Self {
-        Self { command: b"pong".to_vec(), nonce}
+        Self {
+            command: b"pong".to_vec(),
+            nonce,
+        }
     }
 
     pub fn serialize(&self) -> Vec<u8> {
@@ -555,7 +558,8 @@ mod network_tests {
         bloomfilter::BloomFilter,
         merkle_tree::MerkleBlock,
         network::{GetDataMessage, HeadersMessage, NetworkEnvelope, PongMessage},
-        utils::{self, calculate_new_bits_2}, tx::Tx,
+        tx::Tx,
+        utils::{self, calculate_new_bits_2},
     };
     use anyhow::{bail, Result};
     use num_integer::Integer;
@@ -748,7 +752,7 @@ mod network_tests {
                 if !message.is_valid()? {
                     bail!("invalid merkle proof")
                 }
-            } 
+            }
             if r.command == b"tx" {
                 r = node.read().await?;
                 let cursor = Cursor::new(&r.payload);
@@ -757,7 +761,10 @@ mod network_tests {
                 for (i, tx_out) in message.tx_outs.iter().enumerate() {
                     if tx_out.script_pubkey.address(testnet)? == address {
                         println!("found: {}:{}", message.id()?, i);
-                        assert_eq!(message.id()?, "e3930e1e566ca9b75d53b0eb9acb7607f547e1182d1d22bd4b661cfe18dcddf1");
+                        assert_eq!(
+                            message.id()?,
+                            "e3930e1e566ca9b75d53b0eb9acb7607f547e1182d1d22bd4b661cfe18dcddf1"
+                        );
                         found = true;
                         break;
                     }

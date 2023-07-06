@@ -98,8 +98,7 @@ pub fn decode_base58(s: &str) -> Result<Vec<u8>> {
     }
     let mut combined = num.to_bytes_be();
     if combined.len() < 25 {
-       combined = [vec![0; 25 - combined.len()], combined.clone()].concat();
-
+        combined = [vec![0; 25 - combined.len()], combined.clone()].concat();
     }
     let checksum: Vec<u8> = combined.clone().into_iter().rev().take(4).collect();
     let mut checksum = checksum.clone();
@@ -499,11 +498,13 @@ fn key_bytes_to_u32_chunk(bytes: &[u8]) -> u32 {
 #[cfg(test)]
 mod utils_tests {
     use crate::utils::{
-        decode_base58, encode_base58_checksum, h160_to_p2psh_address, merkle_parent,
-        merkle_parent_level, merkle_root, bytes_to_bit_field,
+        bytes_to_bit_field, decode_base58, encode_base58_checksum, h160_to_p2psh_address,
+        merkle_parent, merkle_parent_level, merkle_root,
     };
 
-    use super::{bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address, bit_field_to_bytes};
+    use super::{
+        bit_field_to_bytes, bits_to_target, encode_base58, encode_varint, h160_to_p2pkh_address,
+    };
     use anyhow::{Ok, Result};
 
     #[test]
@@ -653,7 +654,10 @@ mod utils_tests {
         ];
         let want = "4000600a080000010940";
         assert_eq!(hex::encode(bit_field_to_bytes(bit_field.to_vec())?), want);
-        assert_eq!(bytes_to_bit_field(hex::decode(want).unwrap()), bit_field.to_vec());
+        assert_eq!(
+            bytes_to_bit_field(hex::decode(want).unwrap()),
+            bit_field.to_vec()
+        );
         Ok(())
     }
 }

@@ -6,6 +6,7 @@ use s256_field::S256Field;
 use s256_point::S256Point;
 
 pub mod block;
+pub mod bloomfilter;
 pub mod finite_field;
 pub mod finite_field_point;
 pub mod merkle_tree;
@@ -20,7 +21,6 @@ pub mod signature;
 pub mod tx;
 pub mod tx_fetcher;
 pub mod utils;
-pub mod bloomfilter;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PointWrapper<A> {

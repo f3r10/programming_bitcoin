@@ -192,17 +192,19 @@ mod signature_tests {
     }
 
     #[test]
-    fn test_parse_signature()  {
+    fn test_parse_signature() {
         let r: BigInt = BigInt::parse_bytes(
             b"37206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c6",
             16,
         )
-        .context("unable parse hex bytes to bigint").unwrap();
+        .context("unable parse hex bytes to bigint")
+        .unwrap();
         let s: BigInt = BigInt::parse_bytes(
             b"8ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec",
             16,
         )
-        .context("unable parse hex bytes to bigint").unwrap();
+        .context("unable parse hex bytes to bigint")
+        .unwrap();
         let sig = "3045022037206a0610995c58074999cb9767b87af4c4978db68c06e8e6e81d282047a7c60221008ca63759c1157ebeaec0d03cecca119fc9a75bf8e6d0fa65c841c8e2738cdaec";
         let sig_encode = hex::decode(sig).unwrap();
         let mut cursor_sig = Cursor::new(sig_encode);

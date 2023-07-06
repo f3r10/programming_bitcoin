@@ -22,24 +22,24 @@ pub struct Script {
 }
 
 pub fn check_for_p2sh_rule(cmds_copy: &Vec<Command>) -> bool {
-        let pattern1 = cmds_copy.len() == 3;
-        if pattern1 {
-            let pattern2 = match &cmds_copy[0] {
-                Command::Element(_) => false,
-                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
-            };
-            let pattern3_4 = match &cmds_copy[1] {
-                Command::Element(bytes) => bytes.len() == 20,
-                Command::Operation(_) => false,
-            };
-            let pattern5 = match &cmds_copy[2] {
-                Command::Element(_) => false,
-                Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
-            };
-            pattern2 && pattern3_4 & pattern5
-        } else {
-            false
-        }
+    let pattern1 = cmds_copy.len() == 3;
+    if pattern1 {
+        let pattern2 = match &cmds_copy[0] {
+            Command::Element(_) => false,
+            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_hash160().as_ref(),
+        };
+        let pattern3_4 = match &cmds_copy[1] {
+            Command::Element(bytes) => bytes.len() == 20,
+            Command::Operation(_) => false,
+        };
+        let pattern5 = match &cmds_copy[2] {
+            Command::Element(_) => false,
+            Command::Operation(cmd) => cmd.as_ref() == OpCodeFunctions::op_equal().as_ref(),
+        };
+        pattern2 && pattern3_4 & pattern5
+    } else {
+        false
+    }
 }
 
 impl Script {
@@ -203,7 +203,7 @@ impl Script {
             match cmd {
                 Command::Element(elem) => {
                     stack.push(elem.to_vec());
-                    if check_for_p2sh_rule(&cmds_copy)  {
+                    if check_for_p2sh_rule(&cmds_copy) {
                         cmds_copy.pop().context("unable to pop cmd")?; //this is op_hash160
                         let h160 = match cmds_copy.pop().context("unable to pop cmd")? {
                             Command::Element(elem) => elem,

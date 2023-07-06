@@ -3,7 +3,7 @@ use std::{collections::HashMap, io::Cursor};
 use serde::Deserialize;
 
 use crate::tx::Tx;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 pub struct TxFetcher {
     cache: HashMap<String, Tx>,
